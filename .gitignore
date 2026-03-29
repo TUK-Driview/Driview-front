@@ -9,7 +9,7 @@ dist/
 web-build/
 expo-env.d.ts
 
-# Native
+# Native (Expo / credentials)
 .kotlin/
 *.orig.*
 *.jks
@@ -38,6 +38,22 @@ yarn-error.*
 
 app-example
 
-# generated native folders
+# generated native folders (Expo prebuild)
 /ios
 /android
+
+# Android Studio / Gradle (legacy or local native projects)
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
