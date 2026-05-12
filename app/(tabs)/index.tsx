@@ -1,10 +1,15 @@
-import { useRouter } from 'expo-router';
+import { colors } from '@/src/constants/colors';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '@/src/constants/colors';
 
 const recentDrives = [
   { id: 1, date: '2026.01.22 · 22:30', title: '안산 → 수원', meta: '32km · 48분', score: 91, scoreColor: colors.teal500 },
@@ -14,6 +19,76 @@ const recentDrives = [
 
 export default function HomeScreen() {
   const router = useRouter();
+  const [isDriving, setIsDriving] = useState(false);
+  const [drivingSeconds, setDrivingSeconds] = useState(0);
+  const [uploadA, setUploadA] = useState('');
+  const [uploadB, setUploadB] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadPct, setUploadPct] = useState(0);
+  const [uploadLabel, setUploadLabel] = useState('AI 분석 중...');
+
+  useEffect(() => {
+    if (!isDriving) return undefined;
+    const timer = setInterval(() => {
+      setDrivingSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isDriving]);
+
+  useEffect(() => {
+    if (!isUploading) return undefined;
+    const steps = [
+      { pct: 30, label: '영상 업로드 중...' },
+      { pct: 60, label: 'AI 분석 중...' },
+      { pct: 85, label: '위반 구간 추출 중...' },
+      { pct: 100, label: '분석 완료!' },
+    ];
+    let idx = 0;
+    const iv = setInterval(() => {
+      setUploadPct((prev) => {
+        const next = Math.min(prev + 2, 100);
+        if (idx < steps.length && next >= steps[idx].pct) {
+          setUploadLabel(steps[idx].label);
+          idx += 1;
+        }
+        if (next >= 100) {
+          clearInterval(iv);
+          setTimeout(() => {
+            setIsUploading(false);
+            setUploadPct(0);
+            setUploadLabel('AI 분석 중...');
+            router.push('/report');
+          }, 800);
+        }
+        return next;
+      });
+    }, 50);
+    return () => clearInterval(iv);
+  }, [isUploading, router]);
+
+  const drivingTimer = useMemo(() => {
+    const m = String(Math.floor(drivingSeconds / 60)).padStart(2, '0');
+    const s = String(drivingSeconds % 60).padStart(2, '0');
+    return `${m}:${s}`;
+  }, [drivingSeconds]);
+
+  const pickUpload = (slot: 'a' | 'b') => {
+    const names = {
+      a: ['front_20260122.mp4', 'driving_A_0120.mp4', 'cam_front.mp4'],
+      b: ['driver_20260122.mp4', 'interior_B_0120.mp4', 'cam_driver.mp4'],
+    };
+    const selected = names[slot][Math.floor(Math.random() * 3)];
+    if (slot === 'a') setUploadA(selected);
+    if (slot === 'b') setUploadB(selected);
+  };
+
+  const startUpload = () => {
+    if (!uploadA) pickUpload('a');
+    if (!uploadB) pickUpload('b');
+    setIsUploading(true);
+    setUploadPct(0);
+    setUploadLabel('AI 분석 중...');
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -76,6 +151,80 @@ export default function HomeScreen() {
               <Text style={styles.statName}>{stat.label}</Text>
             </View>
           ))}
+        </View>
+
+        <View style={styles.driveBtnWrap}>
+          <TouchableOpacity
+            style={[styles.driveBtn, isDriving ? styles.driveBtnStop : styles.driveBtnStart]}
+            onPress={() => {
+              if (isDriving) {
+                setIsDriving(false);
+              } else {
+                setDrivingSeconds(0);
+                setIsDriving(true);
+              }
+            }}
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.driveBtnText, isDriving ? styles.driveStopText : styles.driveStartText]}>
+              {isDriving ? '주행 종료' : '주행 시작'}
+            </Text>
+          </TouchableOpacity>
+          {isDriving ? (
+            <View style={styles.drivingStatus}>
+              <View style={styles.liveDot} />
+              <Text style={styles.drivingLabel}>주행 중</Text>
+              <Text style={styles.drivingTime}>{drivingTimer}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>영상 업로드</Text>
+        </View>
+        <View style={styles.uploadCard}>
+          <Text style={styles.uploadHint}>듀얼 레코딩 영상을 업로드하면 AI가 운전 습관을 분석해드려요</Text>
+          <View style={styles.uploadRow}>
+            <View style={styles.uploadLeft}>
+              <View style={[styles.uploadBadge, styles.uploadBadgeA]}><Text style={styles.uploadBadgeText}>A</Text></View>
+              <View>
+                <Text style={styles.uploadTitle}>전면 카메라</Text>
+                <Text style={[styles.uploadSub, uploadA && styles.uploadDone]}>{uploadA || '영상을 선택해주세요'}</Text>
+              </View>
+            </View>
+            <TouchableOpacity style={styles.uploadBtnSmall} onPress={() => pickUpload('a')}>
+              <Text style={styles.uploadBtnSmallText}>{uploadA ? '변경' : '선택'}</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.uploadDivider} />
+          <View style={styles.uploadRow}>
+            <View style={styles.uploadLeft}>
+              <View style={[styles.uploadBadge, styles.uploadBadgeB]}><Text style={styles.uploadBadgeText}>B</Text></View>
+              <View>
+                <Text style={styles.uploadTitle}>운전자 카메라</Text>
+                <Text style={[styles.uploadSub, uploadB && styles.uploadDone]}>{uploadB || '영상을 선택해주세요'}</Text>
+              </View>
+            </View>
+            <TouchableOpacity style={styles.uploadBtnSmall} onPress={() => pickUpload('b')}>
+              <Text style={styles.uploadBtnSmallText}>{uploadB ? '변경' : '선택'}</Text>
+            </TouchableOpacity>
+          </View>
+
+          {!isUploading ? (
+            <TouchableOpacity style={styles.uploadCta} onPress={startUpload} activeOpacity={0.85}>
+              <Text style={styles.uploadCtaText}>분석 시작하기</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.progressArea}>
+              <View style={styles.progressHeader}>
+                <Text style={styles.progressLabel}>{uploadLabel}</Text>
+                <Text style={styles.progressPct}>{uploadPct}%</Text>
+              </View>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${uploadPct}%` }]} />
+              </View>
+            </View>
+          )}
         </View>
 
         {/* 최근 운행 */}
@@ -193,4 +342,85 @@ const styles = StyleSheet.create({
   driveTitle: { fontSize: 14, fontWeight: '500', color: '#fff', marginVertical: 2 },
   driveMeta: { fontSize: 11, color: 'rgba(255,255,255,0.35)' },
   driveScore: { fontSize: 20, fontWeight: '800' },
+  driveBtnWrap: { marginHorizontal: 20, marginBottom: 8 },
+  driveBtn: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  driveBtnStart: {
+    backgroundColor: 'rgba(29,158,117,0.12)',
+    borderColor: 'rgba(29,158,117,0.3)',
+  },
+  driveBtnStop: {
+    backgroundColor: 'rgba(226,75,74,0.12)',
+    borderColor: 'rgba(226,75,74,0.3)',
+  },
+  driveBtnText: { fontSize: 13, fontWeight: '700' },
+  driveStartText: { color: colors.teal500 },
+  driveStopText: { color: colors.red400 },
+  drivingStatus: {
+    marginTop: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(29,158,117,0.2)',
+    backgroundColor: 'rgba(29,158,117,0.08)',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.teal500 },
+  drivingLabel: { fontSize: 11, color: colors.teal500, fontWeight: '500' },
+  drivingTime: { marginLeft: 'auto', fontSize: 11, color: 'rgba(255,255,255,0.35)' },
+  uploadCard: {
+    marginHorizontal: 20,
+    marginBottom: 12,
+    backgroundColor: 'rgba(55,138,221,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(55,138,221,0.15)',
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  uploadHint: { fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 10 },
+  uploadRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  uploadLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  uploadBadge: {
+    width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+  },
+  uploadBadgeA: { backgroundColor: 'rgba(55,138,221,0.2)' },
+  uploadBadgeB: { backgroundColor: 'rgba(29,158,117,0.2)' },
+  uploadBadgeText: { fontSize: 12, color: '#fff', fontWeight: '700' },
+  uploadTitle: { fontSize: 13, fontWeight: '600', color: '#fff' },
+  uploadSub: { fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2 },
+  uploadDone: { color: colors.teal500 },
+  uploadBtnSmall: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(55,138,221,0.25)',
+    backgroundColor: 'rgba(55,138,221,0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  uploadBtnSmallText: { fontSize: 11, color: colors.blue200 },
+  uploadDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.05)', marginVertical: 10 },
+  uploadCta: {
+    marginTop: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(55,138,221,0.3)',
+    backgroundColor: 'rgba(55,138,221,0.15)',
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  uploadCtaText: { fontSize: 13, fontWeight: '700', color: colors.blue200 },
+  progressArea: { marginTop: 12 },
+  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  progressLabel: { fontSize: 11, color: 'rgba(255,255,255,0.5)' },
+  progressPct: { fontSize: 11, color: colors.blue200, fontWeight: '700' },
+  progressTrack: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.08)', overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: colors.blue400, borderRadius: 2 },
 });

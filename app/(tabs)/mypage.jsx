@@ -7,32 +7,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/src/constants/colors';
 
 const profileStats = [
-  { val: '1,240', label: '총 주행km' },
   { val: '87', label: '평균 점수' },
-  { val: '42', label: '총 운행수' },
+  { val: '42', label: '총 운행' },
+  { val: '1.2k', label: '총 주행km' },
 ];
 
 const menuGroups = [
   {
-    title: '운전 기록',
+    title: '내 활동',
     items: [
-      { icon: '📝', label: '내가 쓴 글', route: '/myposts' },
-      { icon: '📊', label: '운행 통계', route: null },
+      { icon: '📋', label: '내가 쓴 글', route: '/myposts' },
+      { icon: '❤️', label: '좋아요한 글', route: null },
     ],
   },
   {
-    title: '계정',
+    title: '설정',
     items: [
-      { icon: '👤', label: '프로필 편집', route: null },
       { icon: '🔔', label: '알림 설정', route: null, badge: '3' },
-      { icon: '🔒', label: '보안 설정', route: null },
-    ],
-  },
-  {
-    title: '앱 정보',
-    items: [
-      { icon: '❓', label: '도움말', route: null },
-      { icon: 'ℹ️', label: '앱 버전 1.0.0', route: null },
+      { icon: '🔒', label: '개인정보 처리방침', route: null },
       { icon: '🚪', label: '로그아웃', route: '/login', danger: true },
     ],
   },
@@ -50,7 +42,7 @@ export default function MyPageScreen() {
             <Text style={{ fontSize: 36 }}>🧑</Text>
           </View>
           <Text style={styles.profileName}>현수</Text>
-          <Text style={styles.profileEmail}>hyunsoo@example.com</Text>
+          <Text style={styles.profileEmail}>hyunsu@driview.com</Text>
           <TouchableOpacity style={styles.editBtn}>
             <Text style={styles.editBtnText}>프로필 편집</Text>
           </TouchableOpacity>
