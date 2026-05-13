@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import { colors } from '@/src/constants/colors';
 
@@ -66,6 +68,7 @@ const reportItems = [
 ];
 
 export default function ReportScreen() {
+  const router = useRouter();
   const [selected, setSelected] = useState(null);
   const [videoSec, setVideoSec] = useState(0);
 
@@ -84,6 +87,15 @@ export default function ReportScreen() {
       {!selected ? (
         <>
           <View style={styles.header}>
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={() => router.push('/(tabs)')}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel="뒤로"
+            >
+              <Ionicons name="chevron-back" size={22} color="rgba(255,255,255,0.55)" />
+            </TouchableOpacity>
             <Text style={styles.pageTitle}>운행 리포트</Text>
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
@@ -118,10 +130,18 @@ export default function ReportScreen() {
       ) : (
         <>
           <View style={styles.header}>
-            <TouchableOpacity style={styles.backBtn} onPress={() => setSelected(null)}>
-              <Text style={styles.backText}>‹</Text>
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={() => setSelected(null)}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel="뒤로"
+            >
+              <Ionicons name="chevron-back" size={22} color="rgba(255,255,255,0.55)" />
             </TouchableOpacity>
-            <Text style={styles.pageTitle}>{selected.date} 리포트</Text>
+            <Text style={[styles.pageTitle, styles.pageTitleFlex]} numberOfLines={1}>
+              {selected.date} 리포트
+            </Text>
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
             <LinearGradient colors={['#0d2a4a', '#0d3a2e']} style={styles.heroCard}>
@@ -182,9 +202,18 @@ export default function ReportScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgDark },
   header: { paddingHorizontal: 20, paddingTop: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  backBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center' },
-  backText: { color: 'rgba(255,255,255,0.7)', fontSize: 20, marginTop: -2 },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   pageTitle: { fontSize: 17, fontWeight: '700', color: '#fff' },
+  pageTitleFlex: { flex: 1, flexShrink: 1 },
   monthLabel: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.3)', letterSpacing: 1 },
   driveCard: {
     marginHorizontal: 20, marginBottom: 12, borderRadius: 14, padding: 14,

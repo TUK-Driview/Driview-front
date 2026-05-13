@@ -30,12 +30,6 @@ type DriverVideoPick = {
   mimeType: string;
 };
 
-const recentDrives = [
-  { id: 1, date: '2026.01.22 · 22:30', title: '안산 → 수원', meta: '32km · 48분', score: 91, scoreColor: colors.teal500 },
-  { id: 2, date: '2026.01.20 · 18:15', title: '안산 → 시흥', meta: '18km · 31분', score: 78, scoreColor: colors.amber400 },
-  { id: 3, date: '2026.01.18 · 10:00', title: '안산 → 인천', meta: '44km · 62분', score: 88, scoreColor: colors.teal500 },
-];
-
 export default function HomeScreen() {
   const router = useRouter();
   const { session } = useAuth() as {
@@ -343,33 +337,6 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* 최근 운행 */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>최근 운행</Text>
-          <TouchableOpacity onPress={() => router.push('/report' as any)}>
-            <Text style={styles.sectionMore}>전체 보기</Text>
-          </TouchableOpacity>
-        </View>
-
-        {recentDrives.map((drive) => (
-          <TouchableOpacity
-            key={drive.id}
-            style={styles.driveCard}
-            onPress={() => router.push('/report' as any)}
-            activeOpacity={0.8}
-          >
-            <View style={styles.driveIcon}>
-              <Text style={{ fontSize: 18 }}>🕐</Text>
-            </View>
-            <View style={styles.driveInfo}>
-              <Text style={styles.driveDate}>{drive.date}</Text>
-              <Text style={styles.driveTitle}>{drive.title}</Text>
-              <Text style={styles.driveMeta}>{drive.meta}</Text>
-            </View>
-            <Text style={[styles.driveScore, { color: drive.scoreColor }]}>{drive.score}</Text>
-          </TouchableOpacity>
-        ))}
-
         <View style={{ height: 20 }} />
       </ScrollView>
     </SafeAreaView>
@@ -439,25 +406,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, marginBottom: 12,
   },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  sectionMore: { fontSize: 12, color: colors.blue400 },
 
-  driveCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    marginHorizontal: 20, marginBottom: 12,
-    backgroundColor: colors.bgCard,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14,
-  },
-  driveIcon: {
-    width: 42, height: 42, borderRadius: 12,
-    backgroundColor: 'rgba(55,138,221,0.12)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  driveInfo: { flex: 1 },
-  driveDate: { fontSize: 12, color: 'rgba(255,255,255,0.35)' },
-  driveTitle: { fontSize: 14, fontWeight: '500', color: '#fff', marginVertical: 2 },
-  driveMeta: { fontSize: 11, color: 'rgba(255,255,255,0.35)' },
-  driveScore: { fontSize: 20, fontWeight: '800' },
   driveBtnWrap: { marginHorizontal: 20, marginBottom: 8 },
   driveBtn: {
     borderWidth: 1,
