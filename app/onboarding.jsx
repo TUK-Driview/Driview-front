@@ -24,13 +24,6 @@ export default function OnboardingScreen() {
           </View>
         </View>
 
-        {/* 페이지 도트 */}
-        <View style={styles.dots}>
-          <View style={[styles.dot, styles.dotActive]} />
-          <View style={styles.dot} />
-          <View style={styles.dot} />
-        </View>
-
         {/* 배지 */}
         <View style={styles.badge}>
           <Text style={styles.badgeText}>AI 기반 운전 분석</Text>

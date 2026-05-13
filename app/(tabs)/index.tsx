@@ -4,7 +4,7 @@ import { colors } from '@/src/constants/colors';
 import * as DocumentPicker from 'expo-document-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   ScrollView,
@@ -36,9 +36,7 @@ export default function HomeScreen() {
     session: { accessToken: string } | null;
   };
   const [stats, setStats] = useState<UserStatsPayload | null>(null);
-  const [isDriving, setIsDriving] = useState(false);
-  const [drivingSeconds, setDrivingSeconds] = useState(0);
-  const [uploadA, setUploadA] = useState('');
+  const [roadVideo, setRoadVideo] = useState<DriverVideoPick | null>(null);
   const [driverVideo, setDriverVideo] = useState<DriverVideoPick | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState(0);
@@ -60,29 +58,9 @@ export default function HomeScreen() {
     };
   }, [session?.accessToken]);
 
-  useEffect(() => {
-    if (!isDriving) return undefined;
-    const timer = setInterval(() => {
-      setDrivingSeconds((prev) => prev + 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [isDriving]);
-
-  const drivingTimer = useMemo(() => {
-    const m = String(Math.floor(drivingSeconds / 60)).padStart(2, '0');
-    const s = String(drivingSeconds % 60).padStart(2, '0');
-    return `${m}:${s}`;
-  }, [drivingSeconds]);
-
-  const pickUpload = (slot: 'a' | 'b') => {
-    if (slot === 'a') {
-      const names = ['front_20260122.mp4', 'driving_A_0120.mp4', 'cam_front.mp4'];
-      setUploadA(names[Math.floor(Math.random() * names.length)]);
-      return;
-    }
+  const pickVideo = (setter: (v: DriverVideoPick) => void) => {
     void (async () => {
       try {
-        /** `video/*`만 쓰면 Android에서 .mov가 사진/최근 쪽에 묶이거나 안 잡히는 기기가 많아 * / * 로 연 뒤 아래서 동영상만 통과 */
         const result = await DocumentPicker.getDocumentAsync({
           type: '*/*',
           copyToCacheDirectory: true,
@@ -90,15 +68,12 @@ export default function HomeScreen() {
         if (result.canceled) return;
         const asset = result.assets[0];
         if (!asset?.uri) return;
-        const rawName = asset.name ?? `driver_${Date.now()}.mp4`;
+        const rawName = asset.name ?? `video_${Date.now()}.mp4`;
         const lower = rawName.toLowerCase();
         const videoExt = /\.(mp4|mov|m4v|3gp|webm|mkv|avi)$/i.test(lower);
         const videoMime = asset.mimeType?.startsWith('video/') ?? false;
         if (!videoExt && !videoMime) {
-          Alert.alert(
-            '동영상만 선택',
-            '이 API는 동영상 파일만 받습니다. mp4, mov 등 영상을 골라주세요. (사진·gif는 안 됩니다)',
-          );
+          Alert.alert('동영상만 선택', 'mp4, mov 등 영상 파일을 골라주세요.');
           return;
         }
         const mimeFromExt = lower.endsWith('.mov')
@@ -110,7 +85,7 @@ export default function HomeScreen() {
               : lower.endsWith('.webm')
                 ? 'video/webm'
                 : null;
-        setDriverVideo({
+        setter({
           uri: asset.uri,
           name: /\.[a-zA-Z0-9]+$/.test(rawName) ? rawName : `${rawName}.mp4`,
           mimeType: asset.mimeType ?? mimeFromExt ?? 'video/mp4',
@@ -126,13 +101,13 @@ export default function HomeScreen() {
       Alert.alert('로그인 필요', '로그인 후 이용해주세요.');
       return;
     }
-    if (!driverVideo) {
-      Alert.alert('안내', '운전자 카메라(B) 영상을 선택해주세요.');
+    if (!roadVideo) {
+      Alert.alert('안내', '운전자 카메라(A) 영상을 선택해주세요.');
       return;
     }
-    if (!uploadA) {
-      const names = ['front_20260122.mp4', 'driving_A_0120.mp4', 'cam_front.mp4'];
-      setUploadA(names[Math.floor(Math.random() * names.length)]);
+    if (!driverVideo) {
+      Alert.alert('안내', '후면 카메라(B) 영상을 선택해주세요.');
+      return;
     }
 
     setIsUploading(true);
@@ -176,15 +151,15 @@ export default function HomeScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* 헤더 */}
         <View style={styles.header}>
-          <View>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/mypage')} activeOpacity={0.7}>
             <Text style={styles.greetingSub}>안녕하세요 👋</Text>
             <Text style={styles.greetingMain}>
               <Text style={styles.greetingName}>현수</Text>님의 운전 현황
             </Text>
-          </View>
-          <View style={styles.avatar}>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.avatar} onPress={() => router.push('/(tabs)/mypage')} activeOpacity={0.7}>
             <Text style={styles.avatarEmoji}>🧑</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* 점수 카드 */}
@@ -255,32 +230,6 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        <View style={styles.driveBtnWrap}>
-          <TouchableOpacity
-            style={[styles.driveBtn, isDriving ? styles.driveBtnStop : styles.driveBtnStart]}
-            onPress={() => {
-              if (isDriving) {
-                setIsDriving(false);
-              } else {
-                setDrivingSeconds(0);
-                setIsDriving(true);
-              }
-            }}
-            activeOpacity={0.85}
-          >
-            <Text style={[styles.driveBtnText, isDriving ? styles.driveStopText : styles.driveStartText]}>
-              {isDriving ? '주행 종료' : '주행 시작'}
-            </Text>
-          </TouchableOpacity>
-          {isDriving ? (
-            <View style={styles.drivingStatus}>
-              <View style={styles.liveDot} />
-              <Text style={styles.drivingLabel}>주행 중</Text>
-              <Text style={styles.drivingTime}>{drivingTimer}</Text>
-            </View>
-          ) : null}
-        </View>
-
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>영상 업로드</Text>
         </View>
@@ -290,12 +239,12 @@ export default function HomeScreen() {
             <View style={styles.uploadLeft}>
               <View style={[styles.uploadBadge, styles.uploadBadgeA]}><Text style={styles.uploadBadgeText}>A</Text></View>
               <View>
-                <Text style={styles.uploadTitle}>운전자 카메라</Text>
-                <Text style={[styles.uploadSub, uploadA && styles.uploadDone]}>{uploadA || '영상을 선택해주세요'}</Text>
+                <Text style={styles.uploadTitle}>외부 카메라</Text>
+                <Text style={[styles.uploadSub, roadVideo && styles.uploadDone]}>{roadVideo?.name || '영상을 선택해주세요'}</Text>
               </View>
             </View>
-            <TouchableOpacity style={styles.uploadBtnSmall} onPress={() => pickUpload('a')}>
-              <Text style={styles.uploadBtnSmallText}>{uploadA ? '변경' : '선택'}</Text>
+            <TouchableOpacity style={styles.uploadBtnSmall} onPress={() => pickVideo(setRoadVideo)}>
+              <Text style={styles.uploadBtnSmallText}>{roadVideo ? '변경' : '선택'}</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.uploadDivider} />
@@ -303,14 +252,15 @@ export default function HomeScreen() {
             <View style={styles.uploadLeft}>
               <View style={[styles.uploadBadge, styles.uploadBadgeB]}><Text style={styles.uploadBadgeText}>B</Text></View>
               <View>
-                <Text style={styles.uploadTitle}>전면 카메라</Text>
+                <Text style={styles.uploadTitle}>내부 카메라</Text>
                 <Text style={[styles.uploadSub, driverVideo && styles.uploadDone]}>
                   {driverVideo?.name || '영상을 선택해주세요'}
                 </Text>
               </View>
             </View>
-            <TouchableOpacity style={styles.uploadBtnSmall} onPress={() => pickUpload('b')}>
+            <TouchableOpacity style={styles.uploadBtnSmall} onPress={() => pickVideo(setDriverVideo)}>
               <Text style={styles.uploadBtnSmallText}>{driverVideo ? '변경' : '선택'}</Text>
+
             </TouchableOpacity>
           </View>
 
@@ -366,7 +316,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   avatarEmoji: { fontSize: 20 },
-
   scoreCard: {
     marginHorizontal: 20, marginBottom: 20,
     borderWidth: 1, borderColor: 'rgba(55,138,221,0.2)',
@@ -388,7 +337,6 @@ const styles = StyleSheet.create({
   barLabel: { fontSize: 10, color: 'rgba(255,255,255,0.35)', marginBottom: 6 },
   barTrack: { height: 5, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 3, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 3 },
-
   statCards: { flexDirection: 'row', gap: 12, paddingHorizontal: 20, marginBottom: 20 },
   statCard: {
     flex: 1,
@@ -400,46 +348,11 @@ const styles = StyleSheet.create({
   statVal: { fontSize: 20, fontWeight: '800', color: '#fff' },
   statUnit: { fontSize: 11, color: 'rgba(255,255,255,0.35)' },
   statName: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 4 },
-
   sectionHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, marginBottom: 12,
   },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: '#fff' },
-
-  driveBtnWrap: { marginHorizontal: 20, marginBottom: 8 },
-  driveBtn: {
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  driveBtnStart: {
-    backgroundColor: 'rgba(29,158,117,0.12)',
-    borderColor: 'rgba(29,158,117,0.3)',
-  },
-  driveBtnStop: {
-    backgroundColor: 'rgba(226,75,74,0.12)',
-    borderColor: 'rgba(226,75,74,0.3)',
-  },
-  driveBtnText: { fontSize: 13, fontWeight: '700' },
-  driveStartText: { color: colors.teal500 },
-  driveStopText: { color: colors.red400 },
-  drivingStatus: {
-    marginTop: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(29,158,117,0.2)',
-    backgroundColor: 'rgba(29,158,117,0.08)',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.teal500 },
-  drivingLabel: { fontSize: 11, color: colors.teal500, fontWeight: '500' },
-  drivingTime: { marginLeft: 'auto', fontSize: 11, color: 'rgba(255,255,255,0.35)' },
   uploadCard: {
     marginHorizontal: 20,
     marginBottom: 12,
