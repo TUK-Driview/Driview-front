@@ -296,7 +296,7 @@ export default function HomeScreen() {
             <View style={styles.uploadLeft}>
               <View style={[styles.uploadBadge, styles.uploadBadgeA]}><Text style={styles.uploadBadgeText}>A</Text></View>
               <View>
-                <Text style={styles.uploadTitle}>전면 카메라</Text>
+                <Text style={styles.uploadTitle}>운전자 카메라</Text>
                 <Text style={[styles.uploadSub, uploadA && styles.uploadDone]}>{uploadA || '영상을 선택해주세요'}</Text>
               </View>
             </View>
@@ -309,7 +309,7 @@ export default function HomeScreen() {
             <View style={styles.uploadLeft}>
               <View style={[styles.uploadBadge, styles.uploadBadgeB]}><Text style={styles.uploadBadgeText}>B</Text></View>
               <View>
-                <Text style={styles.uploadTitle}>운전자 카메라</Text>
+                <Text style={styles.uploadTitle}>전면 카메라</Text>
                 <Text style={[styles.uploadSub, driverVideo && styles.uploadDone]}>
                   {driverVideo?.name || '영상을 선택해주세요'}
                 </Text>
