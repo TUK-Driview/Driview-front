@@ -1,4 +1,4 @@
-import { authConfig } from '@/src/auth/config';
+import { authConfig, getPostDetailPath, getPostLikeTogglePath } from '@/src/auth/config';
 
 function buildUrl(path, query) {
   const base = authConfig.apiBaseUrl?.replace(/\/$/, '');
@@ -23,7 +23,8 @@ async function requestApi(path, { method = 'GET', body, query, token } = {}) {
   const res = await fetch(buildUrl(path, query), {
     method,
     headers: {
-      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
@@ -40,7 +41,147 @@ async function requestApi(path, { method = 'GET', body, query, token } = {}) {
   return json;
 }
 
-/** 이메일 로그인 → data에 accessToken, refreshToken */
+/**
+ * GET `/api/v1/posts` 목록 성공 응답 (Swagger)
+ * {
+ *   isSuccess, errorCode, message,
+ *   data: { page, size, totalElements, posts: [{ postId, category, title, nickname, likeCount, commentCount, createdAt }] }
+ * }
+ */
+function parsePostsListResponse(json) {
+  const d = json?.data;
+  if (d != null && typeof d === 'object' && !Array.isArray(d) && Array.isArray(d.posts)) {
+    return {
+      posts: d.posts,
+      page: Number(d.page) || 0,
+      size: Number(d.size) || 0,
+      totalElements: Number(d.totalElements) || 0,
+    };
+  }
+  /** 구버전·로컬 목업: data가 배열이거나 posts 대신 다른 키만 있는 경우 */
+  if (Array.isArray(d)) {
+    return {
+      posts: d,
+      page: 0,
+      size: d.length,
+      totalElements: d.length,
+    };
+  }
+  if (d != null && typeof d === 'object' && !Array.isArray(d)) {
+    if (Array.isArray(d.content)) {
+      const list = d.content;
+      return {
+        posts: list,
+        page: Number(d.page) || 0,
+        size: Number(d.size) || list.length,
+        totalElements: Number(d.totalElements) || list.length,
+      };
+    }
+    if (Array.isArray(d.items)) {
+      const list = d.items;
+      return {
+        posts: list,
+        page: Number(d.page) || 0,
+        size: Number(d.size) || list.length,
+        totalElements: Number(d.totalElements) || list.length,
+      };
+    }
+  }
+  if (Array.isArray(json?.result)) {
+    const r = json.result;
+    return { posts: r, page: 0, size: r.length, totalElements: r.length };
+  }
+  return { posts: [], page: 0, size: 0, totalElements: 0 };
+}
+
+/**
+ * GET `/api/v1/posts` — Bearer accessToken
+ * Query: category?, page(기본 0), size(기본 20)
+ * @returns {{ posts: object[]; page: number; size: number; totalElements: number }}
+ */
+export async function fetchCommunityPosts(
+  accessToken,
+  { page = 0, size = 20, category } = {},
+) {
+  const query = { page, size };
+  if (category != null && String(category).trim() !== '') {
+    query.category = String(category).trim();
+  }
+  const json = await requestApi(authConfig.endpoints.postsList, {
+    method: 'GET',
+    query,
+    token: accessToken,
+  });
+  return parsePostsListResponse(json);
+}
+
+/**
+ * 단건 GET이 목록과 동일하게 `data.posts: [ 한 건 ]`으로 오는 경우
+ */
+function unwrapPostDetailPayload(json) {
+  const d = json?.data ?? json?.result;
+  if (d == null || typeof d !== 'object' || Array.isArray(d)) return null;
+  if (Array.isArray(d.posts) && d.posts.length > 0 && d.posts[0] != null) {
+    return d.posts[0];
+  }
+  if (Array.isArray(d.content) && d.content.length > 0 && typeof d.content[0] === 'object') {
+    return d.content[0];
+  }
+  return null;
+}
+
+/** GET `/api/v1/posts/{postId}` — 단건(목록에 본문 없을 때 보강) */
+export async function fetchPostDetail(accessToken, postId) {
+  const json = await requestApi(getPostDetailPath(postId), {
+    method: 'GET',
+    token: accessToken,
+  });
+  const fromListShape = unwrapPostDetailPayload(json);
+  if (fromListShape != null) return fromListShape;
+  const payload = json?.data ?? json?.result;
+  return payload != null && typeof payload === 'object' ? payload : json;
+}
+
+/**
+ * POST `/api/v1/posts` — 게시글 작성 (Swagger: 200 OK)
+ * Request: `{ category, title, content }`
+ * Response: `{ isSuccess, errorCode, message, data: { postId } }`
+ * @param {{ category: string; title: string; content: string }} payload
+ */
+export async function createPost(accessToken, { category, title, content }) {
+  const trimmedTitle = typeof title === 'string' ? title.trim() : '';
+  const trimmedContent = typeof content === 'string' ? content.trim() : '';
+  if (!trimmedTitle) {
+    throw new Error('제목을 입력해주세요.');
+  }
+  if (!trimmedContent) {
+    throw new Error('내용을 입력해주세요.');
+  }
+  const categoryStr = typeof category === 'string' ? category.trim() : String(category ?? '');
+  if (!categoryStr) {
+    throw new Error('카테고리를 선택해주세요.');
+  }
+  const json = await requestApi(authConfig.endpoints.postsCreate, {
+    method: 'POST',
+    body: {
+      category: categoryStr,
+      title: trimmedTitle,
+      content: trimmedContent,
+    },
+    token: accessToken,
+  });
+  const data = json?.data;
+  const postId = data?.postId ?? data?.id;
+  if (json?.isSuccess === false || postId == null) {
+    throw new Error(json?.message || '등록에 실패했습니다.');
+  }
+  return {
+    postId,
+    message: json?.message,
+    errorCode: json?.errorCode,
+  };
+}
+
 export async function loginWithEmail(email, password) {
   const json = await requestApi(authConfig.endpoints.loginEmail, {
     method: 'POST',
@@ -150,4 +291,39 @@ export async function analyzeDriverVideo(accessToken, file) {
   }
 
   return payload;
+}
+
+/**
+ * 게시글 좋아요 토글 POST `/api/v1/posts/{postId}/likes` (Swagger)
+ * Response: `{ isSuccess, errorCode, message, data: { liked, likeCount } }`
+ * @returns {{ liked: boolean; likeCount: number; message?: string; errorCode?: string }}
+ */
+export async function togglePostLike(accessToken, postId) {
+  const json = await requestApi(getPostLikeTogglePath(postId), {
+    method: 'POST',
+    token: accessToken,
+  });
+  const data = json?.data;
+  if (json?.isSuccess === false || data == null || typeof data !== 'object') {
+    throw new Error(json?.message || '좋아요 처리에 실패했습니다.');
+  }
+
+  const rawLiked = data.liked;
+  const liked =
+    rawLiked === true ||
+    rawLiked === 1 ||
+    rawLiked === '1' ||
+    (typeof rawLiked === 'string' && rawLiked.toLowerCase() === 'true');
+  const rawCount = data.likeCount ?? data.likes ?? data.like_count;
+  const likeCount = Number(rawCount);
+  if (Number.isNaN(likeCount) || rawCount === undefined || rawCount === null || rawCount === '') {
+    throw new Error(json?.message || '좋아요 처리에 실패했습니다.');
+  }
+
+  return {
+    liked: Boolean(liked),
+    likeCount,
+    message: json?.message,
+    errorCode: json?.errorCode,
+  };
 }

@@ -14,7 +14,21 @@ export const authConfig = {
     userStats: '/api/users/me/stats',
     /** POST multipart — Bearer accessToken, field name `file` */
     faceAiAnalyze: '/api/faceai/analyze',
+    /** GET 게시글 목록 — Bearer; 응답 data: { page, size, totalElements, posts[] } */
+    postsList: '/api/v1/posts',
+    /** POST 게시글 작성 — Bearer; body { category, title, content }; 200, data.postId */
+    postsCreate: '/api/v1/posts',
   },
 };
+
+/** POST 좋아요 토글 — Bearer; 성공 시 `data`: { liked, likeCount } (200 등) */
+export function getPostLikeTogglePath(postId) {
+  return `/api/v1/posts/${encodeURIComponent(String(postId))}/likes`;
+}
+
+/** GET 게시글 단건(본문 보강용) */
+export function getPostDetailPath(postId) {
+  return `/api/v1/posts/${encodeURIComponent(String(postId))}`;
+}
 
 export const SESSION_STORAGE_KEY = 'driview.session.v1';

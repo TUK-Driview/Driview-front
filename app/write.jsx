@@ -2,21 +2,43 @@ import { useState } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ScrollView, Platform,
+  StyleSheet, ScrollView, Platform, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/src/constants/colors';
+import { createPost } from '@/src/auth/api';
+import { useAuth } from '@/src/auth/context';
+import { TAG_TO_POST_CATEGORY_API } from '@/src/constants/postBoardCategories';
 
 const TAGS = ['팁 공유', '점수 인증', '질문', '자유'];
 
 export default function WritePostScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { session, isAuthenticated } = useAuth();
 
   const [selectedTag, setSelectedTag] = useState(params.autoTag ?? '팁 공유');
   const [title, setTitle]     = useState(params.autoTitle   ?? '');
   const [content, setContent] = useState(params.autoContent ?? '');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const onSubmit = async () => {
+    if (!isAuthenticated || !session?.accessToken) {
+      Alert.alert('알림', '로그인 후 등록할 수 있습니다.');
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      const category = TAG_TO_POST_CATEGORY_API[selectedTag] ?? '자유게시판';
+      await createPost(session.accessToken, { category, title, content });
+      router.back();
+    } catch (e) {
+      Alert.alert('등록 실패', e?.message || '게시글을 등록하지 못했습니다.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -35,11 +57,16 @@ export default function WritePostScreen() {
         </TouchableOpacity>
         <Text style={styles.pageTitle}>글 작성</Text>
         <TouchableOpacity
-          style={styles.submitBtn}
-          onPress={() => router.back()}
+          style={[styles.submitBtn, isSubmitting && styles.submitBtnDisabled]}
+          onPress={() => void onSubmit()}
+          disabled={isSubmitting}
           activeOpacity={0.85}
         >
-          <Text style={styles.submitBtnText}>등록</Text>
+          {isSubmitting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.submitBtnText}>등록</Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -140,7 +167,11 @@ const styles = StyleSheet.create({
   submitBtn: {
     backgroundColor: colors.blue400, borderRadius: 10,
     paddingHorizontal: 18, paddingVertical: 8,
+    minWidth: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  submitBtnDisabled: { opacity: 0.65 },
   submitBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
 
   body: { padding: 20, gap: 16 },
