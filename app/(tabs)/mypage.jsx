@@ -5,6 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/src/constants/colors';
+import { useAuth } from '@/src/auth/context';
 
 const profileStats = [
   { val: '87', label: '평균 점수' },
@@ -32,6 +33,7 @@ const menuGroups = [
 
 export default function MyPageScreen() {
   const router = useRouter();
+  const { signOut } = useAuth();
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -66,7 +68,14 @@ export default function MyPageScreen() {
               <TouchableOpacity
                 key={item.label}
                 style={styles.menuItem}
-                onPress={() => item.route && router.push(item.route)}
+                onPress={async () => {
+                  if (item.label === '로그아웃') {
+                    await signOut();
+                    router.replace('/login');
+                    return;
+                  }
+                  if (item.route) router.push(item.route);
+                }}
                 activeOpacity={0.7}
               >
                 <View style={styles.menuIcon}>

@@ -1,5 +1,8 @@
 import { Redirect } from 'expo-router';
+import { useAuth } from '@/src/auth/context';
 
 export default function Index() {
-  return <Redirect href="/onboarding" />;
+  const { isAuthenticated, isBootstrapping } = useAuth();
+  if (isBootstrapping) return null;
+  return <Redirect href={isAuthenticated ? '/(tabs)' : '/onboarding'} />;
 }

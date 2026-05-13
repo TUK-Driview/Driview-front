@@ -4,21 +4,55 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, KeyboardAvoidingView, Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/src/constants/colors';
+import { useAuth } from '@/src/auth/context';
 
 export default function SignupScreen() {
   const router = useRouter();
-  const [name, setName] = useState('');
+  const { signUpEmail } = useAuth();
+  const [nickname, setNickname] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const onEmailSignup = async () => {
+    if (!nickname || !email || !password || !passwordConfirm) {
+      setErrorMessage('모든 항목을 입력해주세요.');
+      return;
+    }
+    if (password !== passwordConfirm) {
+      setErrorMessage('비밀번호 확인이 일치하지 않습니다.');
+      return;
+    }
+    try {
+      setErrorMessage('');
+      setIsLoading(true);
+      await signUpEmail({ email, password, passwordConfirm, nickname });
+      router.replace('/login');
+    } catch (e) {
+      setErrorMessage(e.message || '회원가입에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const onGoogleSignup = () => {
+    Alert.alert('안내', 'Google 회원가입은 준비 중입니다.');
+  };
+
+  const onKakaoSignup = () => {
+    Alert.alert('안내', '카카오 회원가입은 준비 중입니다.');
+  };
 
   return (
     <LinearGradient colors={['#0d1b3e', '#0a1628']} style={styles.container}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
         <ScrollView
@@ -39,10 +73,10 @@ export default function SignupScreen() {
 
           {/* 소셜 가입 */}
           <View style={styles.socialBtns}>
-            <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8} disabled={isLoading} onPress={onGoogleSignup}>
               <Text style={styles.socialBtnText}>🌐 Google로 가입</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8} disabled={isLoading} onPress={onKakaoSignup}>
               <Text style={styles.socialBtnText}>💛 카카오로 가입</Text>
             </TouchableOpacity>
           </View>
@@ -54,15 +88,20 @@ export default function SignupScreen() {
             <View style={styles.dividerLine} />
           </View>
 
-          {/* 이름 */}
+          {/* 닉네임 */}
           <View style={styles.formGroup}>
-            <Text style={styles.label}>이름</Text>
+            <Text style={styles.label}>닉네임</Text>
             <TextInput
               style={styles.input}
-              placeholder="홍길동"
+              placeholder="드라이버"
               placeholderTextColor="rgba(255,255,255,0.25)"
-              value={name}
-              onChangeText={setName}
+              value={nickname}
+              onChangeText={setNickname}
+              keyboardType="default"
+              autoCapitalize="none"
+              {...(Platform.OS === 'android'
+                ? { autoComplete: 'off', importantForAutofill: 'no' }
+                : {})}
             />
           </View>
 
@@ -75,8 +114,11 @@ export default function SignupScreen() {
               placeholderTextColor="rgba(255,255,255,0.25)"
               value={email}
               onChangeText={setEmail}
-              keyboardType="email-address"
+              keyboardType={Platform.OS === 'android' ? 'default' : 'email-address'}
               autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="emailAddress"
+              autoComplete="email"
             />
           </View>
 
@@ -90,6 +132,10 @@ export default function SignupScreen() {
               value={password}
               onChangeText={setPassword}
               secureTextEntry
+              autoCorrect={false}
+              spellCheck={false}
+              textContentType="password"
+              autoComplete="password-new"
             />
           </View>
 
@@ -103,17 +149,26 @@ export default function SignupScreen() {
               value={passwordConfirm}
               onChangeText={setPasswordConfirm}
               secureTextEntry
+              autoCorrect={false}
+              spellCheck={false}
+              textContentType="password"
+              autoComplete="password"
             />
           </View>
 
           {/* 가입 버튼 */}
           <TouchableOpacity
             style={styles.signupBtn}
-            onPress={() => router.replace('/(tabs)')}
+            onPress={onEmailSignup}
             activeOpacity={0.85}
+            disabled={isLoading}
           >
-            <Text style={styles.signupBtnText}>가입하기</Text>
+            <Text style={styles.signupBtnText}>{isLoading ? '가입 중...' : '가입하기'}</Text>
           </TouchableOpacity>
+
+          {errorMessage ? (
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          ) : null}
 
           {/* 로그인 링크 */}
           <View style={styles.loginRow}>
@@ -239,5 +294,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.blue400,
     fontWeight: '500',
+  },
+  errorText: {
+    marginTop: 14,
+    fontSize: 12,
+    color: colors.red400,
+    textAlign: 'center',
   },
 });

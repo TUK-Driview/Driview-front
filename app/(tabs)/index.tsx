@@ -1,8 +1,12 @@
+import { analyzeDriverVideo, getUserStats } from '@/src/auth/api';
+import { useAuth } from '@/src/auth/context';
 import { colors } from '@/src/constants/colors';
+import * as DocumentPicker from 'expo-document-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,6 +14,21 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+type UserStatsPayload = {
+  avgScore: number;
+  totalDrives: number;
+  totalKm: number;
+  monthlyDrives: number;
+  laneDepartureCount: number;
+  drowsyCount: number;
+};
+
+type DriverVideoPick = {
+  uri: string;
+  name: string;
+  mimeType: string;
+};
 
 const recentDrives = [
   { id: 1, date: '2026.01.22 · 22:30', title: '안산 → 수원', meta: '32km · 48분', score: 91, scoreColor: colors.teal500 },
@@ -19,13 +38,33 @@ const recentDrives = [
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { session } = useAuth() as {
+    session: { accessToken: string } | null;
+  };
+  const [stats, setStats] = useState<UserStatsPayload | null>(null);
   const [isDriving, setIsDriving] = useState(false);
   const [drivingSeconds, setDrivingSeconds] = useState(0);
   const [uploadA, setUploadA] = useState('');
-  const [uploadB, setUploadB] = useState('');
+  const [driverVideo, setDriverVideo] = useState<DriverVideoPick | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState(0);
   const [uploadLabel, setUploadLabel] = useState('AI 분석 중...');
+
+  useEffect(() => {
+    if (!session?.accessToken) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = (await getUserStats(session.accessToken)) as UserStatsPayload | null;
+        if (!cancelled && data) setStats(data);
+      } catch {
+        /* 오프라인·미설정 시 화면 기본값 유지 */
+      }
+    })().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.accessToken]);
 
   useEffect(() => {
     if (!isDriving) return undefined;
@@ -35,37 +74,6 @@ export default function HomeScreen() {
     return () => clearInterval(timer);
   }, [isDriving]);
 
-  useEffect(() => {
-    if (!isUploading) return undefined;
-    const steps = [
-      { pct: 30, label: '영상 업로드 중...' },
-      { pct: 60, label: 'AI 분석 중...' },
-      { pct: 85, label: '위반 구간 추출 중...' },
-      { pct: 100, label: '분석 완료!' },
-    ];
-    let idx = 0;
-    const iv = setInterval(() => {
-      setUploadPct((prev) => {
-        const next = Math.min(prev + 2, 100);
-        if (idx < steps.length && next >= steps[idx].pct) {
-          setUploadLabel(steps[idx].label);
-          idx += 1;
-        }
-        if (next >= 100) {
-          clearInterval(iv);
-          setTimeout(() => {
-            setIsUploading(false);
-            setUploadPct(0);
-            setUploadLabel('AI 분석 중...');
-            router.push('/report');
-          }, 800);
-        }
-        return next;
-      });
-    }, 50);
-    return () => clearInterval(iv);
-  }, [isUploading, router]);
-
   const drivingTimer = useMemo(() => {
     const m = String(Math.floor(drivingSeconds / 60)).padStart(2, '0');
     const s = String(drivingSeconds % 60).padStart(2, '0');
@@ -73,21 +81,100 @@ export default function HomeScreen() {
   }, [drivingSeconds]);
 
   const pickUpload = (slot: 'a' | 'b') => {
-    const names = {
-      a: ['front_20260122.mp4', 'driving_A_0120.mp4', 'cam_front.mp4'],
-      b: ['driver_20260122.mp4', 'interior_B_0120.mp4', 'cam_driver.mp4'],
-    };
-    const selected = names[slot][Math.floor(Math.random() * 3)];
-    if (slot === 'a') setUploadA(selected);
-    if (slot === 'b') setUploadB(selected);
+    if (slot === 'a') {
+      const names = ['front_20260122.mp4', 'driving_A_0120.mp4', 'cam_front.mp4'];
+      setUploadA(names[Math.floor(Math.random() * names.length)]);
+      return;
+    }
+    void (async () => {
+      try {
+        /** `video/*`만 쓰면 Android에서 .mov가 사진/최근 쪽에 묶이거나 안 잡히는 기기가 많아 * / * 로 연 뒤 아래서 동영상만 통과 */
+        const result = await DocumentPicker.getDocumentAsync({
+          type: '*/*',
+          copyToCacheDirectory: true,
+        });
+        if (result.canceled) return;
+        const asset = result.assets[0];
+        if (!asset?.uri) return;
+        const rawName = asset.name ?? `driver_${Date.now()}.mp4`;
+        const lower = rawName.toLowerCase();
+        const videoExt = /\.(mp4|mov|m4v|3gp|webm|mkv|avi)$/i.test(lower);
+        const videoMime = asset.mimeType?.startsWith('video/') ?? false;
+        if (!videoExt && !videoMime) {
+          Alert.alert(
+            '동영상만 선택',
+            '이 API는 동영상 파일만 받습니다. mp4, mov 등 영상을 골라주세요. (사진·gif는 안 됩니다)',
+          );
+          return;
+        }
+        const mimeFromExt = lower.endsWith('.mov')
+          ? 'video/quicktime'
+          : lower.endsWith('.mp4') || lower.endsWith('.m4v')
+            ? 'video/mp4'
+            : lower.endsWith('.3gp')
+              ? 'video/3gpp'
+              : lower.endsWith('.webm')
+                ? 'video/webm'
+                : null;
+        setDriverVideo({
+          uri: asset.uri,
+          name: /\.[a-zA-Z0-9]+$/.test(rawName) ? rawName : `${rawName}.mp4`,
+          mimeType: asset.mimeType ?? mimeFromExt ?? 'video/mp4',
+        });
+      } catch {
+        Alert.alert('오류', '파일을 선택하지 못했습니다.');
+      }
+    })().catch(() => {});
   };
 
-  const startUpload = () => {
-    if (!uploadA) pickUpload('a');
-    if (!uploadB) pickUpload('b');
+  const startUpload = async () => {
+    if (!session?.accessToken) {
+      Alert.alert('로그인 필요', '로그인 후 이용해주세요.');
+      return;
+    }
+    if (!driverVideo) {
+      Alert.alert('안내', '운전자 카메라(B) 영상을 선택해주세요.');
+      return;
+    }
+    if (!uploadA) {
+      const names = ['front_20260122.mp4', 'driving_A_0120.mp4', 'cam_front.mp4'];
+      setUploadA(names[Math.floor(Math.random() * names.length)]);
+    }
+
     setIsUploading(true);
-    setUploadPct(0);
-    setUploadLabel('AI 분석 중...');
+    setUploadPct(15);
+    setUploadLabel('영상 업로드 중...');
+    try {
+      const result = await analyzeDriverVideo(session.accessToken, driverVideo);
+      setUploadPct(85);
+      setUploadLabel('분석 완료!');
+      setUploadPct(100);
+      setTimeout(() => {
+        try {
+          setIsUploading(false);
+          setUploadPct(0);
+          setUploadLabel('AI 분석 중...');
+          router.push({
+            pathname: '/report',
+            params: {
+              sessionId: String(result.sessionId),
+              yawnCount: String(result.yawnCount ?? ''),
+              durationSec: String(result.durationSec ?? ''),
+              drowsinessEvents: JSON.stringify(result.drowsinessEvents ?? []),
+            },
+          });
+        } catch {
+          setIsUploading(false);
+          setUploadPct(0);
+          setUploadLabel('AI 분석 중...');
+        }
+      }, 500);
+    } catch (e) {
+      setIsUploading(false);
+      setUploadPct(0);
+      setUploadLabel('AI 분석 중...');
+      Alert.alert('분석 실패', e instanceof Error ? e.message : '다시 시도해주세요.');
+    }
   };
 
   return (
@@ -115,10 +202,13 @@ export default function HomeScreen() {
         >
           <Text style={styles.scoreLabel}>이번 달 종합 점수</Text>
           <Text style={styles.scoreNumber}>
-            87<Text style={styles.scoreMax}>/100</Text>
+            {stats != null ? Math.round(stats.avgScore) : 87}
+            <Text style={styles.scoreMax}>/100</Text>
           </Text>
           <View style={styles.scoreBadge}>
-            <Text style={styles.scoreBadgeText}>↑ 지난달 대비 +3점</Text>
+            <Text style={styles.scoreBadgeText}>
+              {stats != null ? `누적 주행 ${stats.totalDrives ?? 0}회 · ${Number(stats.totalKm ?? 0).toLocaleString()}km` : '↑ 지난달 대비 +3점'}
+            </Text>
           </View>
           <View style={styles.scoreBars}>
             {[
@@ -139,9 +229,27 @@ export default function HomeScreen() {
         {/* 통계 카드 3개 */}
         <View style={styles.statCards}>
           {[
-            { icon: '🛣️', val: '328', unit: 'km', label: '이번 달 주행', bg: 'rgba(29,158,117,0.15)' },
-            { icon: '⚠️', val: '3', unit: '회', label: '차선 이탈', bg: 'rgba(186,117,23,0.15)' },
-            { icon: '😴', val: '0', unit: '회', label: '졸음 감지', bg: 'rgba(226,75,74,0.15)' },
+            {
+              icon: '🛣️',
+              val: stats != null ? String(stats.monthlyDrives ?? 0) : '328',
+              unit: stats != null ? '회' : 'km',
+              label: stats != null ? '이번 달 운행' : '이번 달 주행',
+              bg: 'rgba(29,158,117,0.15)',
+            },
+            {
+              icon: '⚠️',
+              val: stats != null ? String(stats.laneDepartureCount ?? 0) : '3',
+              unit: '회',
+              label: '차선 이탈',
+              bg: 'rgba(186,117,23,0.15)',
+            },
+            {
+              icon: '😴',
+              val: stats != null ? String(stats.drowsyCount ?? 0) : '0',
+              unit: '회',
+              label: '졸음 감지',
+              bg: 'rgba(226,75,74,0.15)',
+            },
           ].map((stat) => (
             <View key={stat.label} style={styles.statCard}>
               <View style={[styles.statIcon, { backgroundColor: stat.bg }]}>
@@ -202,16 +310,24 @@ export default function HomeScreen() {
               <View style={[styles.uploadBadge, styles.uploadBadgeB]}><Text style={styles.uploadBadgeText}>B</Text></View>
               <View>
                 <Text style={styles.uploadTitle}>운전자 카메라</Text>
-                <Text style={[styles.uploadSub, uploadB && styles.uploadDone]}>{uploadB || '영상을 선택해주세요'}</Text>
+                <Text style={[styles.uploadSub, driverVideo && styles.uploadDone]}>
+                  {driverVideo?.name || '영상을 선택해주세요'}
+                </Text>
               </View>
             </View>
             <TouchableOpacity style={styles.uploadBtnSmall} onPress={() => pickUpload('b')}>
-              <Text style={styles.uploadBtnSmallText}>{uploadB ? '변경' : '선택'}</Text>
+              <Text style={styles.uploadBtnSmallText}>{driverVideo ? '변경' : '선택'}</Text>
             </TouchableOpacity>
           </View>
 
           {!isUploading ? (
-            <TouchableOpacity style={styles.uploadCta} onPress={startUpload} activeOpacity={0.85}>
+            <TouchableOpacity
+              style={styles.uploadCta}
+              onPress={() => {
+                void startUpload().catch(() => {});
+              }}
+              activeOpacity={0.85}
+            >
               <Text style={styles.uploadCtaText}>분석 시작하기</Text>
             </TouchableOpacity>
           ) : (

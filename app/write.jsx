@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ScrollView,
+  StyleSheet, ScrollView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -72,6 +72,10 @@ export default function WritePostScreen() {
           placeholderTextColor="rgba(255,255,255,0.2)"
           value={title}
           onChangeText={setTitle}
+          keyboardType="default"
+          {...(Platform.OS === 'android'
+            ? { autoComplete: 'off', importantForAutofill: 'no' }
+            : {})}
         />
 
         <View style={styles.divider} />
@@ -85,6 +89,10 @@ export default function WritePostScreen() {
           onChangeText={setContent}
           multiline
           textAlignVertical="top"
+          blurOnSubmit={false}
+          {...(Platform.OS === 'android'
+            ? { autoComplete: 'off', importantForAutofill: 'no' }
+            : {})}
         />
 
         {/* 툴바 */}

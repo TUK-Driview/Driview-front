@@ -4,18 +4,48 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, KeyboardAvoidingView, Platform,
+  Alert,
 } from 'react-native';
 import { colors } from '@/src/constants/colors';
+import { useAuth } from '@/src/auth/context';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { signInEmail } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const onEmailLogin = async () => {
+    if (!email || !password) {
+      setErrorMessage('이메일과 비밀번호를 입력해주세요.');
+      return;
+    }
+    try {
+      setErrorMessage('');
+      setIsLoading(true);
+      await signInEmail({ email, password });
+      router.replace('/(tabs)');
+    } catch (e) {
+      setErrorMessage(e.message || '로그인에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const onGoogleLogin = () => {
+    Alert.alert('안내', 'Google 로그인은 준비 중입니다.');
+  };
+
+  const onKakaoLogin = () => {
+    Alert.alert('안내', '카카오 로그인은 준비 중입니다.');
+  };
 
   return (
     <LinearGradient colors={['#0d1b3e', '#0a1628']} style={styles.container}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
         <ScrollView
@@ -44,7 +74,7 @@ export default function LoginScreen() {
               placeholderTextColor="rgba(255,255,255,0.25)"
               value={email}
               onChangeText={setEmail}
-              keyboardType="email-address"
+              keyboardType={Platform.OS === 'android' ? 'default' : 'email-address'}
               autoCapitalize="none"
             />
           </View>
@@ -65,10 +95,11 @@ export default function LoginScreen() {
           {/* 로그인 버튼 */}
           <TouchableOpacity
             style={styles.loginBtn}
-            onPress={() => router.replace('/(tabs)')}
+            onPress={onEmailLogin}
             activeOpacity={0.85}
+            disabled={isLoading}
           >
-            <Text style={styles.loginBtnText}>로그인</Text>
+            <Text style={styles.loginBtnText}>{isLoading ? '로그인 중...' : '로그인'}</Text>
           </TouchableOpacity>
 
           {/* 구분선 */}
@@ -80,13 +111,17 @@ export default function LoginScreen() {
 
           {/* 소셜 로그인 */}
           <View style={styles.socialBtns}>
-            <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8} disabled={isLoading} onPress={onGoogleLogin}>
               <Text style={styles.socialBtnText}>🌐 Google</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8} disabled={isLoading} onPress={onKakaoLogin}>
               <Text style={styles.socialBtnText}>💛 카카오</Text>
             </TouchableOpacity>
           </View>
+
+          {errorMessage ? (
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          ) : null}
 
           {/* 회원가입 링크 */}
           <View style={styles.signupRow}>
@@ -219,5 +254,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.blue400,
     fontWeight: '500',
+  },
+  errorText: {
+    marginTop: 14,
+    fontSize: 12,
+    color: colors.red400,
+    textAlign: 'center',
   },
 });

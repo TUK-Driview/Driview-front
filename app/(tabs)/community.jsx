@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  TextInput, StyleSheet,
+  TextInput, StyleSheet, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -48,6 +48,10 @@ export default function CommunityScreen() {
             style={styles.searchInput}
             placeholder="검색"
             placeholderTextColor="rgba(255,255,255,0.3)"
+            keyboardType="default"
+            {...(Platform.OS === 'android'
+              ? { autoComplete: 'off', importantForAutofill: 'no' }
+              : {})}
           />
         </View>
         <TouchableOpacity
