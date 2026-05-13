@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -67,10 +67,69 @@ const reportItems = [
   { date: '2025.12.28', time: '09:20', route: '안산 → 수원', meta: '30km · 44분', score: 71, color: colors.red400 },
 ];
 
+const VIDEO_DURATION_SEC = 48 * 60 + 20;
+
+const violationTimelineItems = [
+  {
+    id: 'lane',
+    seekSec: 214,
+    timeLabel: '3:34',
+    dotColor: '#EF9F27',
+    accent: '#EF9F27',
+    borderColor: 'rgba(239,159,39,0.4)',
+    badgeBg: 'rgba(239,159,39,0.2)',
+    icon: 'warning',
+    iconColor: '#F5C842',
+    title: '차선 이탈',
+    subtitle: '1호선 고가 구간 · 1회',
+  },
+  {
+    id: 'brake',
+    seekSec: 1870,
+    timeLabel: '31:10',
+    dotColor: colors.red400,
+    accent: colors.red400,
+    borderColor: 'rgba(226,75,74,0.45)',
+    badgeBg: 'rgba(226,75,74,0.2)',
+    icon: 'stop-circle',
+    iconColor: colors.red400,
+    title: '급제동',
+    subtitle: '수원IC 진입 구간 · 1회',
+  },
+  {
+    id: 'speed',
+    seekSec: 2680,
+    timeLabel: '44:40',
+    dotColor: '#EF9F27',
+    accent: '#EF9F27',
+    borderColor: 'rgba(239,159,39,0.4)',
+    badgeBg: 'rgba(239,159,39,0.2)',
+    icon: 'rocket-outline',
+    iconColor: '#F5C842',
+    title: '과속',
+    subtitle: '동수원 IC 합류 구간',
+  },
+];
+
+function formatVideoTime(totalSeconds) {
+  const s = Math.max(0, Math.min(totalSeconds, VIDEO_DURATION_SEC));
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
 export default function ReportScreen() {
   const router = useRouter();
   const [selected, setSelected] = useState(null);
   const [videoSec, setVideoSec] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
+
+  useEffect(() => {
+    if (selected) {
+      setVideoSec(219);
+      setIsPlaying(true);
+    }
+  }, [selected?.date, selected?.time]);
 
   const gradeText = useMemo(() => {
     if (!selected) return '';
@@ -80,7 +139,9 @@ export default function ReportScreen() {
     return '위험 운전 등급';
   }, [selected]);
 
-  const seekTo = (sec) => setVideoSec(sec);
+  const seekTo = (sec) => setVideoSec(Math.max(0, Math.min(sec, VIDEO_DURATION_SEC)));
+
+  const videoProgress = VIDEO_DURATION_SEC > 0 ? videoSec / VIDEO_DURATION_SEC : 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -166,20 +227,61 @@ export default function ReportScreen() {
 
             <View style={styles.videoCard}>
               <Text style={styles.videoTitle}>영상 확인하기</Text>
-              <View style={styles.videoMock}>
-                <Text style={styles.videoMockLabel}>전면 카메라 영상</Text>
-                <Text style={styles.videoMockTime}>{Math.floor(videoSec / 60)}:{String(videoSec % 60).padStart(2, '0')}</Text>
+
+              <View style={styles.videoStage}>
+                <View style={styles.videoStageCenter}>
+                  <TouchableOpacity
+                    style={styles.videoPlayBtn}
+                    onPress={() => setIsPlaying((p) => !p)}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel={isPlaying ? '일시정지' : '재생'}
+                  >
+                    <Ionicons name={isPlaying ? 'pause' : 'play'} size={28} color="#fff" style={isPlaying ? {} : { marginLeft: 3 }} />
+                  </TouchableOpacity>
+                  <Text style={styles.videoMockLabel}>전면 카메라 영상</Text>
+                </View>
+
+                <View style={styles.videoScrubRow}>
+                  <Text style={styles.videoTimeLeft}>{formatVideoTime(videoSec)}</Text>
+                  <View style={styles.videoTrackWrap}>
+                    <View style={styles.videoTrack}>
+                      <View style={[styles.videoTrackFill, { width: `${videoProgress * 100}%` }]} />
+                    </View>
+                    <View style={[styles.videoKnob, { left: `${videoProgress * 100}%` }]} />
+                  </View>
+                  <Text style={styles.videoTimeRight}>{formatVideoTime(VIDEO_DURATION_SEC)}</Text>
+                </View>
               </View>
+
               <Text style={styles.timelineTitle}>위반 구간 타임라인</Text>
-              <TouchableOpacity style={styles.timelineItem} onPress={() => seekTo(214)}>
-                <Text style={styles.timelineText}>3:34 차선 이탈</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.timelineItem} onPress={() => seekTo(1870)}>
-                <Text style={styles.timelineText}>31:10 급제동</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.timelineItem} onPress={() => seekTo(2680)}>
-                <Text style={styles.timelineText}>44:40 과속</Text>
-              </TouchableOpacity>
+
+              {violationTimelineItems.map((ev) => (
+                <View key={ev.id} style={styles.timelineRow}>
+                  <View style={styles.timelineGutter}>
+                    <Text style={styles.timelineGutterTime}>{ev.timeLabel}</Text>
+                    <View style={[styles.timelineDot, { backgroundColor: ev.dotColor }]} />
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.timelineCard, { borderColor: ev.borderColor }]}
+                    onPress={() => seekTo(ev.seekSec)}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.timelineCardBody}>
+                      <View style={[styles.timelineIconWrap, { backgroundColor: `${ev.accent}18` }]}>
+                        <Ionicons name={ev.icon} size={22} color={ev.iconColor} />
+                      </View>
+                      <View style={styles.timelineTextBlock}>
+                        <Text style={styles.timelineCardTitle}>{ev.title}</Text>
+                        <Text style={styles.timelineCardSub}>{ev.subtitle}</Text>
+                      </View>
+                      <View style={[styles.timelineBadge, { backgroundColor: ev.badgeBg }]}>
+                        <Text style={[styles.timelineBadgeText, { color: ev.accent }]}>{ev.timeLabel}</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              ))}
             </View>
 
             <View style={styles.adviceBox}>
@@ -283,19 +385,124 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgCard,
     padding: 14,
   },
-  videoTitle: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 10 },
-  videoMock: {
-    height: 140,
-    borderRadius: 14,
+  videoTitle: { fontSize: 14, fontWeight: '700', color: '#fff', marginBottom: 12 },
+  videoStage: {
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: '#000',
+    overflow: 'hidden',
+    minHeight: 200,
+  },
+  videoStageCenter: {
+    flexGrow: 1,
+    minHeight: 148,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+  },
+  videoPlayBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.blue400,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  videoMockLabel: { fontSize: 12, color: 'rgba(255,255,255,0.42)' },
+  videoScrubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    paddingTop: 4,
+    gap: 10,
+  },
+  videoTimeLeft: { fontSize: 11, fontWeight: '600', color: '#fff', width: 36 },
+  videoTimeRight: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.45)', width: 36, textAlign: 'right' },
+  videoTrackWrap: {
+    flex: 1,
+    height: 22,
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  videoTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    overflow: 'hidden',
+  },
+  videoTrackFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: colors.blue400,
+  },
+  videoKnob: {
+    position: 'absolute',
+    top: 4,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#fff',
+    marginLeft: -7,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.15)',
+  },
+  timelineTitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.45)',
+    marginTop: 16,
+    marginBottom: 10,
+    fontWeight: '600',
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+    marginBottom: 10,
+  },
+  timelineGutter: {
+    width: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6,
+    paddingTop: 14,
+  },
+  timelineGutterTime: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.45)',
+  },
+  timelineDot: { width: 6, height: 6, borderRadius: 3 },
+  timelineCard: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  timelineCardBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  timelineIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  videoMockLabel: { fontSize: 11, color: 'rgba(255,255,255,0.35)' },
-  videoMockTime: { marginTop: 6, fontSize: 12, color: colors.blue200, fontWeight: '700' },
-  timelineTitle: { fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 12, marginBottom: 8, fontWeight: '500' },
-  timelineItem: { borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8 },
-  timelineText: { fontSize: 12, color: '#fff' },
+  timelineTextBlock: { flex: 1, minWidth: 0 },
+  timelineCardTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  timelineCardSub: { fontSize: 11, color: 'rgba(255,255,255,0.38)', marginTop: 3 },
+  timelineBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  timelineBadgeText: { fontSize: 11, fontWeight: '700' },
 });
