@@ -2,9 +2,16 @@ import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ScrollView, KeyboardAvoidingView, Platform,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
   Alert,
+  Image,
 } from 'react-native';
 import { colors } from '@/src/constants/colors';
 import { useAuth } from '@/src/auth/context';
@@ -112,10 +119,24 @@ export default function LoginScreen() {
           {/* 소셜 로그인 */}
           <View style={styles.socialBtns}>
             <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8} disabled={isLoading} onPress={onGoogleLogin}>
-              <Text style={styles.socialBtnText}>🌐 Google</Text>
+              <View style={styles.socialBtnRow}>
+                <Image
+                  source={require('../assets/images/google-signin-g.png')}
+                  style={styles.googleIcon}
+                  accessibilityLabel="Google"
+                />
+                <Text style={styles.socialBtnText}>Google</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8} disabled={isLoading} onPress={onKakaoLogin}>
-              <Text style={styles.socialBtnText}>💛 카카오</Text>
+              <View style={styles.socialBtnRow}>
+                <Image
+                  source={require('../assets/images/kakao-signin-talk.png')}
+                  style={styles.kakaoIcon}
+                  accessibilityLabel="카카오"
+                />
+                <Text style={styles.socialBtnText}>카카오</Text>
+              </View>
             </TouchableOpacity>
           </View>
 
@@ -236,6 +257,22 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  socialBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  googleIcon: {
+    width: 22,
+    height: 22,
+    resizeMode: 'contain',
+  },
+  kakaoIcon: {
+    width: 22,
+    height: 22,
+    resizeMode: 'contain',
   },
   socialBtnText: {
     fontSize: 13,
