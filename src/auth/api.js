@@ -135,12 +135,20 @@ function unwrapPostDetailPayload(json) {
   return null;
 }
 
-/** GET `/api/v1/posts/{postId}` — 단건(목록에 본문 없을 때 보강) */
+/** GET `/api/v1/posts/{postId}/` — 단건. `data`에 게시글 필드가 직접 오는 형태 */
 export async function fetchPostDetail(accessToken, postId) {
   const json = await requestApi(getPostDetailPath(postId), {
     method: 'GET',
     token: accessToken,
   });
+  const d = json?.data ?? json?.result;
+  if (d != null && typeof d === 'object' && !Array.isArray(d)) {
+    const singleId = d.postId ?? d.id;
+    const looksLikeListWrapper = Array.isArray(d.posts) || Array.isArray(d.content);
+    if (singleId != null && singleId !== '' && !looksLikeListWrapper) {
+      return d;
+    }
+  }
   const fromListShape = unwrapPostDetailPayload(json);
   if (fromListShape != null) return fromListShape;
   const payload = json?.data ?? json?.result;
