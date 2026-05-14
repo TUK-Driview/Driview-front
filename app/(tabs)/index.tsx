@@ -1,4 +1,4 @@
-import { analyzeDriverVideo, getUserStats } from '@/src/auth/api';
+import { analyzeDriverVideo, getMyProfile, getUserStats } from '@/src/auth/api';
 import { useAuth } from '@/src/auth/context';
 import { colors } from '@/src/constants/colors';
 import * as DocumentPicker from 'expo-document-picker';
@@ -36,6 +36,7 @@ export default function HomeScreen() {
     session: { accessToken: string } | null;
   };
   const [stats, setStats] = useState<UserStatsPayload | null>(null);
+  const [nickname, setNickname] = useState<string>('');
   const [roadVideo, setRoadVideo] = useState<DriverVideoPick | null>(null);
   const [driverVideo, setDriverVideo] = useState<DriverVideoPick | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -47,8 +48,14 @@ export default function HomeScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const data = (await getUserStats(session.accessToken)) as UserStatsPayload | null;
-        if (!cancelled && data) setStats(data);
+        const [data, profile] = await Promise.all([
+          getUserStats(session.accessToken) as Promise<UserStatsPayload | null>,
+          getMyProfile(session.accessToken),
+        ]);
+        if (!cancelled) {
+          if (data) setStats(data);
+          if (profile?.nickname) setNickname(profile.nickname);
+        }
       } catch {
         /* 오프라인·미설정 시 화면 기본값 유지 */
       }
@@ -154,7 +161,7 @@ export default function HomeScreen() {
           <TouchableOpacity onPress={() => router.push('/(tabs)/mypage')} activeOpacity={0.7}>
             <Text style={styles.greetingSub}>안녕하세요 👋</Text>
             <Text style={styles.greetingMain}>
-              <Text style={styles.greetingName}>현수</Text>님의 운전 현황
+              <Text style={styles.greetingName}>{nickname || '현수'}</Text>님의 운전 현황
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.avatar} onPress={() => router.push('/(tabs)/mypage')} activeOpacity={0.7}>

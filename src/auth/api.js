@@ -209,6 +209,38 @@ export async function getMe(accessToken) {
   return requestApi(authConfig.endpoints.me, { token: accessToken });
 }
 
+/** GET 알림 설정 — data: { driveReportAlert, drowsinessAlert, communityCommentAlert, communityLikeAlert, marketingAlert } */
+export async function getNotificationSettings(accessToken) {
+  const json = await requestApi(authConfig.endpoints.notificationSettings, { token: accessToken });
+  return json?.data ?? null;
+}
+
+/** PATCH 알림 설정 변경 — body: 변경할 필드만 */
+export async function updateNotificationSettings(accessToken, body) {
+  const json = await requestApi(authConfig.endpoints.notificationSettings, {
+    method: 'PATCH',
+    body,
+    token: accessToken,
+  });
+  return json?.data ?? null;
+}
+
+/** GET 내가 쓴 글 목록 — data: { totalCount, posts: [{ postId, category, title, content, likeCount, commentCount, createdAt }] } */
+export async function getMyPosts(accessToken) {
+  const json = await requestApi(authConfig.endpoints.myPosts, { token: accessToken });
+  const d = json?.data;
+  return {
+    totalCount: d?.totalCount ?? 0,
+    posts: Array.isArray(d?.posts) ? d.posts : [],
+  };
+}
+
+/** GET 내 프로필 — data: { userId, nickname, email, avgScore, totalDriveCount, totalDistanceKm, createdAt } */
+export async function getMyProfile(accessToken) {
+  const json = await requestApi(authConfig.endpoints.myProfile, { token: accessToken });
+  return json?.data ?? null;
+}
+
 /** GET 통계 — Authorization: Bearer accessToken; year·month 생략 시 서버 기본(현재 연·월) */
 export async function getUserStats(accessToken, { year, month } = {}) {
   try {

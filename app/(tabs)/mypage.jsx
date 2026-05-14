@@ -1,31 +1,26 @@
 import { useRouter } from 'expo-router';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/src/constants/colors';
 import { useAuth } from '@/src/auth/context';
-
-const profileStats = [
-  { val: '87', label: '평균 점수' },
-  { val: '42', label: '총 운행' },
-  { val: '1.2k', label: '총 주행km' },
-];
+import { getMyProfile } from '@/src/auth/api';
+import { useEffect, useState } from 'react';
 
 const menuGroups = [
   {
     title: '내 활동',
     items: [
       { icon: '📋', label: '내가 쓴 글', route: '/myposts' },
-      { icon: '❤️', label: '좋아요한 글', route: null },
     ],
   },
   {
     title: '설정',
     items: [
-      { icon: '🔔', label: '알림 설정', route: null, badge: '3' },
-      { icon: '🔒', label: '개인정보 처리방침', route: null },
+      { icon: '🔔', label: '알림 설정', route: '/notification-settings' },
+      { icon: '🔒', label: '개인정보 처리방침', route: '/privacy-policy' },
       { icon: '🚪', label: '로그아웃', route: '/login', danger: true },
     ],
   },
@@ -33,7 +28,27 @@ const menuGroups = [
 
 export default function MyPageScreen() {
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { signOut, session } = useAuth();
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!session?.accessToken) { setLoading(false); return; }
+    getMyProfile(session.accessToken)
+      .then((data) => setProfile(data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [session?.accessToken]);
+
+  const nickname = profile?.nickname ?? '—';
+  const email = profile?.email ?? '—';
+  const avgScore = profile != null ? Math.round(profile.avgScore ?? 0) : '—';
+  const totalDrives = profile?.totalDriveCount ?? '—';
+  const totalKm = profile != null
+    ? (profile.totalDistanceKm >= 1000
+      ? `${(profile.totalDistanceKm / 1000).toFixed(1)}k`
+      : String(Math.round(profile.totalDistanceKm ?? 0)))
+    : '—';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -43,16 +58,22 @@ export default function MyPageScreen() {
           <View style={styles.avatarBig}>
             <Text style={{ fontSize: 36 }}>🧑</Text>
           </View>
-          <Text style={styles.profileName}>현수</Text>
-          <Text style={styles.profileEmail}>hyunsu@driview.com</Text>
-          <TouchableOpacity style={styles.editBtn}>
+          {loading
+            ? <ActivityIndicator color={colors.blue400} style={{ marginBottom: 8 }} />
+            : <Text style={styles.profileName}>{nickname}</Text>}
+          <Text style={styles.profileEmail}>{email}</Text>
+          <TouchableOpacity style={styles.editBtn} onPress={() => router.push('/edit-profile')}>
             <Text style={styles.editBtnText}>프로필 편집</Text>
           </TouchableOpacity>
         </View>
 
         {/* 통계 */}
         <View style={styles.statsRow}>
-          {profileStats.map((s) => (
+          {[
+            { val: avgScore, label: '평균 점수' },
+            { val: totalDrives, label: '총 운행' },
+            { val: totalKm, label: '총 주행km' },
+          ].map((s) => (
             <View key={s.label} style={styles.statCard}>
               <Text style={styles.statVal}>{s.val}</Text>
               <Text style={styles.statLabel}>{s.label}</Text>

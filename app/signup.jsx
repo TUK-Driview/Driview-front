@@ -118,11 +118,6 @@ export default function SignupScreen() {
               placeholderTextColor="rgba(255,255,255,0.25)"
               value={nickname}
               onChangeText={setNickname}
-              keyboardType="default"
-              autoCapitalize="none"
-              {...(Platform.OS === 'android'
-                ? { autoComplete: 'off', importantForAutofill: 'no' }
-                : {})}
             />
           </View>
 
