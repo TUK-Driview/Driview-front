@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
+import { useRouter, useFocusEffect } from 'expo-router';
 import {
   View,
   Text,
@@ -11,246 +11,25 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/src/constants/colors';
 import { fetchCommunityPosts, fetchPostDetail, togglePostLike } from '@/src/auth/api';
 import { useAuth } from '@/src/auth/context';
-import { loadLikedPostIds, rememberLikedPost } from '@/src/community/likedPostIdsStorage';
+import { loadLikedPostIds, rememberLikedPost, likesUserKey } from '@/src/community/likedPostIdsStorage';
+import {
+  COMMUNITY_TABS as TABS,
+  extractContentFromMerged,
+  hasExplicitLikeField,
+  mapServerPostToCard,
+  mergePostRecord,
+  mergePostRecordDeep,
+  parseLikedFromRecord,
+  postCreatedAtMs,
+} from '@/src/community/postMappers';
 import { TAG_TO_POST_CATEGORY_API } from '@/src/constants/postBoardCategories';
-
-const TABS = ['전체', '팁 공유', '점수 인증', '질문'];
-
-/** AsyncStorage 분리용 — 로그인 사용자 식별자 */
-function likesUserKey(session) {
-  const u = session?.user;
-  if (u && typeof u === 'object') {
-    const k = u.email ?? u.id ?? u.memberId ?? u.userId ?? u.nickname;
-    if (k != null && String(k).trim() !== '') return String(k).trim();
-  }
-  return 'default';
-}
-
-const AVATAR_PALETTE = [
-  { avatarBg: 'rgba(55,138,221,0.2)', avatarColor: colors.blue200 },
-  { avatarBg: 'rgba(29,158,117,0.2)', avatarColor: colors.teal500 },
-  { avatarBg: 'rgba(186,117,23,0.2)', avatarColor: '#EF9F27' },
-];
-
-function formatPostTime(value) {
-  if (value == null || value === '') return '';
-  const d = new Date(value);
-  if (!Number.isNaN(d.getTime())) {
-    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(
-      d.getMinutes(),
-    ).padStart(2, '0')}`;
-  }
-  return String(value);
-}
-
-function pickFirstNonEmptyString(...candidates) {
-  for (const v of candidates) {
-    if (v == null) continue;
-    if (typeof v === 'object' && !Array.isArray(v)) continue;
-    const s = String(v).trim();
-    if (s !== '') return s;
-  }
-  return '';
-}
-
-/** 목록/단건 응답에서 흔한 중첩(post, data, result)을 한 객체로 합침 */
-function mergePostRecord(raw) {
-  if (!raw || typeof raw !== 'object') return {};
-  const post = raw.post && typeof raw.post === 'object' ? raw.post : {};
-  const data = raw.data && typeof raw.data === 'object' ? raw.data : {};
-  const result = raw.result && typeof raw.result === 'object' ? raw.result : {};
-  const dataPost = data.post && typeof data.post === 'object' ? data.post : {};
-  const postData = post.data && typeof post.data === 'object' ? post.data : {};
-  const postDetail = raw.postDetail && typeof raw.postDetail === 'object' ? raw.postDetail : {};
-  const postResponse = raw.postResponse && typeof raw.postResponse === 'object' ? raw.postResponse : {};
-  const postInfo = raw.postInfo && typeof raw.postInfo === 'object' ? raw.postInfo : {};
-  const view = raw.view && typeof raw.view === 'object' ? raw.view : {};
-  return {
-    ...raw,
-    ...post,
-    ...data,
-    ...result,
-    ...dataPost,
-    ...postData,
-    ...postDetail,
-    ...postResponse,
-    ...postInfo,
-    ...view,
-  };
-}
-
-/** 단건 등 중첩이 여러 겹일 때 본문 필드가 안 올라오는 경우 대비 */
-function mergePostRecordDeep(raw) {
-  return mergePostRecord(mergePostRecord(mergePostRecord(raw)));
-}
-
-function extractContentFromMerged(m) {
-  if (!m || typeof m !== 'object') return '';
-  const direct = pickFirstNonEmptyString(
-    m.content,
-    m.body,
-    m.text,
-    m.description,
-    m.postContent,
-    m.postBody,
-    m.mainContent,
-    m.boardContent,
-    m.articleContent,
-    m.detail,
-    m.post_content,
-    m.post_body,
-    m.textBody,
-    m.plainText,
-    m.message,
-    m.answer,
-    m.memo,
-    m.preview,
-    m.summary,
-    m.snippet,
-    m.oneLine,
-    m.contentSummary,
-    m.article,
-    m.subTitle,
-    m.subtitle,
-    m.detailContent,
-    m.fullText,
-    m.mainText,
-    m.htmlContent,
-    m.html,
-    m.markdown,
-    m.markdownBody,
-    m.editorContent,
-    m.richContent,
-    m.writing,
-    m.contentBody,
-    m.articleBody,
-    m.textContent,
-  );
-  if (direct) return direct;
-  const arr = m.contents ?? m.blocks ?? m.paragraphs;
-  if (Array.isArray(arr)) {
-    const joined = arr
-      .map((item) => {
-        if (typeof item === 'string') return item;
-        if (item && typeof item === 'object') {
-          return pickFirstNonEmptyString(
-            item.content,
-            item.text,
-            item.body,
-            item.value,
-            item.data,
-          );
-        }
-        return '';
-      })
-      .filter((s) => String(s).trim() !== '')
-      .join('\n');
-    if (joined.trim()) return joined.trim();
-  }
-  return '';
-}
-
-const LIKE_FLAG_KEYS = [
-  'liked',
-  'isLiked',
-  'is_liked',
-  'likedByMe',
-  'myLike',
-  'userLiked',
-  'hasLiked',
-  'isLike',
-  'likeYn',
-  'likedYn',
-  'liked_yn',
-];
-
-function hasExplicitLikeField(m) {
-  if (!m || typeof m !== 'object') return false;
-  if (m.likeStatus != null || m.reaction != null) return true;
-  return LIKE_FLAG_KEYS.some((k) => m[k] !== undefined && m[k] !== null);
-}
-
-function parseLikedFromRecord(m) {
-  if (!m || typeof m !== 'object') return false;
-  const st = m.likeStatus ?? m.reaction;
-  if (typeof st === 'string') {
-    const u = st.toUpperCase();
-    if (u.includes('LIKE') || u === 'Y' || u === 'TRUE') return true;
-    if (u.includes('NONE') || u === 'N' || u === 'FALSE') return false;
-  }
-  for (const k of LIKE_FLAG_KEYS) {
-    const v = m[k];
-    if (v === undefined || v === null) continue;
-    if (v === true || v === 1 || v === '1' || v === 'Y' || v === 'y' || v === 'true' || v === 'YES') return true;
-    if (v === false || v === 0 || v === '0' || v === 'N' || v === 'n' || v === 'false' || v === 'NO') return false;
-  }
-  return false;
-}
-
-/** API `category` 값(예: 자유게시판) → 탭 필터용 짧은 라벨 */
-function categoryToTabLabel(category) {
-  const s = category == null ? '' : String(category);
-  if (TABS.includes(s)) return s;
-  if (s.includes('팁')) return '팁 공유';
-  if (s.includes('점수') || s.includes('인증')) return '점수 인증';
-  if (s.includes('질문')) return '질문';
-  if (s.includes('자유')) return '자유';
-  return '자유';
-}
-
-/** 서버 게시글 한 건 → 카드 UI 모델 (필드명은 백엔드에 맞게 넓게 매핑) */
-function mapServerPostToCard(raw, index) {
-  const m = mergePostRecord(raw);
-  const id = m.postId ?? m.id ?? raw?.postId ?? raw?.id;
-  if (id == null) return null;
-
-  const name = String(
-    m.authorNickname ?? m.nickname ?? m.writerName ?? m.authorName ?? m.author ?? m.writer ?? '드라이버',
-  ).trim() || '드라이버';
-  const initial = name.charAt(0) || '?';
-  const palette = AVATAR_PALETTE[index % AVATAR_PALETTE.length];
-
-  const tagRaw = m.category ?? m.tag ?? m.postType ?? raw?.category;
-  const tag = categoryToTabLabel(tagRaw);
-
-  const title = pickFirstNonEmptyString(
-    m.title,
-    m.postTitle,
-    m.subject,
-    m.headline,
-    m.post_title,
-    m.postName,
-  );
-
-  const content = extractContentFromMerged(m);
-
-  const likes = Number(m.likeCount ?? m.likes ?? m.like_count ?? 0) || 0;
-  const comments = Number(m.commentCount ?? m.comments ?? m.comment_count ?? 0) || 0;
-  const liked = hasExplicitLikeField(m) ? parseLikedFromRecord(m) : false;
-  const scoreRaw = m.drivingScore ?? m.score;
-  const score = scoreRaw != null && scoreRaw !== '' ? Number(scoreRaw) : null;
-
-  return {
-    id,
-    title,
-    name,
-    initial,
-    ...palette,
-    time: formatPostTime(m.createdAt ?? m.created_at ?? m.modifiedAt ?? m.updatedAt) || '방금 전',
-    score: Number.isFinite(score) ? score : null,
-    content: content || '',
-    likes,
-    comments,
-    tag,
-    liked,
-  };
-}
 
 export default function CommunityScreen() {
   const router = useRouter();
@@ -286,6 +65,16 @@ export default function CommunityScreen() {
           return { row: mergePostRecord(row), card };
         })
         .filter(Boolean);
+
+      pairs.sort((a, b) => {
+        const tb = postCreatedAtMs(b.row);
+        const ta = postCreatedAtMs(a.row);
+        if (tb !== ta) return tb - ta;
+        const idb = Number(b.card.id);
+        const ida = Number(a.card.id);
+        if (Number.isFinite(idb) && Number.isFinite(ida) && idb !== ida) return idb - ida;
+        return String(b.card.id).localeCompare(String(a.card.id), undefined, { numeric: true });
+      });
 
       let mapped = pairs.map((p) => p.card);
 
@@ -338,12 +127,14 @@ export default function CommunityScreen() {
       setFeedLoading(false);
       setFeedRefreshing(false);
     }
-  }, [session?.accessToken, session?.user, activeTab]);
+  }, [session, activeTab]);
 
-  useEffect(() => {
-    setFeedLoading(true);
-    void loadPosts();
-  }, [loadPosts]);
+  useFocusEffect(
+    useCallback(() => {
+      setFeedLoading(true);
+      void loadPosts();
+    }, [loadPosts]),
+  );
 
   const onRefresh = useCallback(() => {
     if (!session?.accessToken) return;
@@ -490,29 +281,36 @@ export default function CommunityScreen() {
 
         {filteredPosts.map((post) => (
           <View key={String(post.id)} style={styles.postCard}>
-            <View style={styles.postHeader}>
-              <View style={[styles.avatar, { backgroundColor: post.avatarBg }]}>
-                <Text style={[styles.avatarText, { color: post.avatarColor }]}>{post.initial}</Text>
-              </View>
-              <View style={styles.postMeta}>
-                <Text style={styles.postName}>{post.name}</Text>
-                <Text style={styles.postTime}>{post.time}</Text>
-              </View>
-              {post.score != null && post.score !== '' ? (
-                <View style={styles.scoreBadge}>
-                  <Text style={styles.scoreBadgeText}>{post.score}</Text>
+            <Pressable
+              onPress={() => router.push(`/community/${post.id}`)}
+              style={({ pressed }) => [pressed && { opacity: 0.92 }]}
+            >
+              <View style={styles.postHeader}>
+                <View style={[styles.avatar, { backgroundColor: post.avatarBg }]}>
+                  <Text style={[styles.avatarText, { color: post.avatarColor }]}>{post.initial}</Text>
                 </View>
-              ) : null}
-            </View>
+                <View style={styles.postMeta}>
+                  <Text style={styles.postName}>{post.name}</Text>
+                  <Text style={styles.postTime}>{post.time}</Text>
+                </View>
+                {post.score != null && post.score !== '' ? (
+                  <View style={styles.scoreBadge}>
+                    <Text style={styles.scoreBadgeText}>{post.score}</Text>
+                  </View>
+                ) : null}
+              </View>
 
-            {post.title ? <Text style={styles.postTitle}>{post.title}</Text> : null}
-            {post.content ? (
-              <Text style={styles.postContent}>{post.content}</Text>
-            ) : post.title ? null : (
-              <Text style={styles.postContentMuted}>
-                목록 응답에 제목·본문이 없습니다. API JSON 필드명을 알려주세요.
-              </Text>
-            )}
+              {post.title ? <Text style={styles.postTitle}>{post.title}</Text> : null}
+              {post.content ? (
+                <Text style={styles.postContent} numberOfLines={6}>
+                  {post.content}
+                </Text>
+              ) : post.title ? null : (
+                <Text style={styles.postContentMuted}>
+                  목록 응답에 제목·본문이 없습니다. API JSON 필드명을 알려주세요.
+                </Text>
+              )}
+            </Pressable>
 
             <View style={styles.postFooter}>
               <TouchableOpacity
@@ -534,7 +332,7 @@ export default function CommunityScreen() {
                 </View>
                 <Text style={styles.likeCount}>{post.likes}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.action}>
+              <TouchableOpacity style={styles.action} onPress={() => router.push(`/community/${post.id}`)}>
                 <Text style={styles.actionText}>💬 {post.comments}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.action}>

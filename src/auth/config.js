@@ -37,4 +37,9 @@ export function getPostDetailPath(postId) {
   return `/api/v1/posts/${encodeURIComponent(String(postId))}`;
 }
 
+/** GET/POST 게시글 댓글 — Bearer; POST body `{ content }`, 200 data `{ commentId, nickname, content, createdAt }` */
+export function getPostCommentsPath(postId) {
+  return `/api/v1/posts/${encodeURIComponent(String(postId))}/comments`;
+}
+
 export const SESSION_STORAGE_KEY = 'driview.session.v1';

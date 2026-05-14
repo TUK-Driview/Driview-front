@@ -2,6 +2,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const PREFIX = 'driview.community.likedPostIds.v1';
 
+/** AsyncStorage 분리용 — 로그인 사용자 식별자 */
+export function likesUserKey(session) {
+  const u = session?.user;
+  if (u && typeof u === 'object') {
+    const k = u.email ?? u.id ?? u.memberId ?? u.userId ?? u.nickname;
+    if (k != null && String(k).trim() !== '') return String(k).trim();
+  }
+  return 'default';
+}
+
 function storageKey(userKey) {
   const safe = userKey != null && String(userKey).trim() !== '' ? String(userKey).trim() : 'default';
   return `${PREFIX}:${safe}`;

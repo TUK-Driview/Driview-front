@@ -28,13 +28,28 @@ export default function WritePostScreen() {
       Alert.alert('알림', '로그인 후 등록할 수 있습니다.');
       return;
     }
+    const trimmedTitle = String(title || '').trim();
+    const trimmedContent = String(content || '').trim();
+    if (!trimmedTitle) {
+      Alert.alert('알림', '제목을 입력해주세요.');
+      return;
+    }
+    if (!trimmedContent) {
+      Alert.alert('알림', '내용을 입력해주세요.');
+      return;
+    }
     try {
       setIsSubmitting(true);
       const category = TAG_TO_POST_CATEGORY_API[selectedTag] ?? '자유게시판';
-      await createPost(session.accessToken, { category, title, content });
+      await createPost(session.accessToken, {
+        category,
+        title: trimmedTitle,
+        content: trimmedContent,
+      });
       router.back();
     } catch (e) {
-      Alert.alert('등록 실패', e?.message || '게시글을 등록하지 못했습니다.');
+      const msg = e?.message || '게시글을 등록하지 못했습니다.';
+      Alert.alert('등록 실패', `${msg}\n\nAPI 주소(.env)와 서버 상태를 확인해 주세요.`);
     } finally {
       setIsSubmitting(false);
     }

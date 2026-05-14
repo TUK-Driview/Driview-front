@@ -1,4 +1,9 @@
-import { authConfig, getPostDetailPath, getPostLikeTogglePath } from '@/src/auth/config';
+import {
+  authConfig,
+  getPostCommentsPath,
+  getPostDetailPath,
+  getPostLikeTogglePath,
+} from '@/src/auth/config';
 
 function buildUrl(path, query) {
   const base = authConfig.apiBaseUrl?.replace(/\/$/, '');
@@ -58,7 +63,7 @@ function parsePostsListResponse(json) {
       totalElements: Number(d.totalElements) || 0,
     };
   }
-  /** 구버전·로컬 목업: data가 배열이거나 posts 대신 다른 키만 있는 경우 */
+  /** 구버전·다른 스키마: data가 배열이거나 posts 대신 content/items 만 있는 경우 */
   if (Array.isArray(d)) {
     return {
       posts: d,
@@ -142,6 +147,76 @@ export async function fetchPostDetail(accessToken, postId) {
   return payload != null && typeof payload === 'object' ? payload : json;
 }
 
+function extractCommentsRows(json) {
+  const d = json?.data;
+  if (Array.isArray(d)) return d;
+  if (d != null && typeof d === 'object' && !Array.isArray(d)) {
+    if (Array.isArray(d.comments)) return d.comments;
+    if (Array.isArray(d.content)) return d.content;
+    if (Array.isArray(d.items)) return d.items;
+    if (Array.isArray(d.results)) return d.results;
+    if (Array.isArray(d.posts)) return d.posts;
+  }
+  if (Array.isArray(json?.result)) return json.result;
+  return [];
+}
+
+/**
+ * GET `/api/v1/posts/{postId}/comments`
+ * Query: page?, size?
+ */
+export async function fetchPostComments(
+  accessToken,
+  postId,
+  { page = 0, size = 50 } = {},
+) {
+  const json = await requestApi(getPostCommentsPath(postId), {
+    method: 'GET',
+    query: { page, size },
+    token: accessToken,
+  });
+  return extractCommentsRows(json);
+}
+
+/**
+ * POST `/api/v1/posts/{postId}/comments` — body `{ content }` (Swagger)
+ * Response 200: `{ isSuccess, errorCode, message, data: { commentId, nickname, content, createdAt } }`
+ * @returns {{ message?: string; errorCode?: string; data: { commentId: number|string; nickname?: string; content: string; createdAt?: string } }}
+ */
+export async function createPostComment(accessToken, postId, content) {
+  const trimmed = typeof content === 'string' ? content.trim() : '';
+  if (!trimmed) {
+    throw new Error('댓글을 입력해주세요.');
+  }
+  const json = await requestApi(getPostCommentsPath(postId), {
+    method: 'POST',
+    body: { content: trimmed },
+    token: accessToken,
+  });
+  const data = json?.data;
+  if (json?.isSuccess === false) {
+    throw new Error(json?.message || '댓글 등록에 실패했습니다.');
+  }
+  if (data == null || typeof data !== 'object') {
+    throw new Error(json?.message || '댓글 응답이 올바르지 않습니다.');
+  }
+  const commentId = data.commentId ?? data.id;
+  const bodyText = data.content != null && String(data.content).trim() !== '' ? String(data.content).trim() : trimmed;
+  if (commentId == null && bodyText === '') {
+    throw new Error(json?.message || '댓글 응답이 올바르지 않습니다.');
+  }
+  return {
+    message: json?.message,
+    errorCode: json?.errorCode,
+    data: {
+      commentId: commentId ?? `temp-${Date.now()}`,
+      nickname: data.nickname,
+      content: bodyText,
+      createdAt: data.createdAt,
+    },
+  };
+}
+
 /**
  * POST `/api/v1/posts` — 게시글 작성 (Swagger: 200 OK)
  * Request: `{ category, title, content }`
@@ -161,6 +236,11 @@ export async function createPost(accessToken, { category, title, content }) {
   if (!categoryStr) {
     throw new Error('카테고리를 선택해주세요.');
   }
+
+  if (!String(authConfig.apiBaseUrl || '').trim()) {
+    throw new Error('EXPO_PUBLIC_API_BASE_URL 이 설정되어 있지 않습니다.');
+  }
+
   const json = await requestApi(authConfig.endpoints.postsCreate, {
     method: 'POST',
     body: {
@@ -170,10 +250,16 @@ export async function createPost(accessToken, { category, title, content }) {
     },
     token: accessToken,
   });
-  const data = json?.data;
-  const postId = data?.postId ?? data?.id;
-  if (json?.isSuccess === false || postId == null) {
+  if (json?.isSuccess === false) {
     throw new Error(json?.message || '등록에 실패했습니다.');
+  }
+  const raw = json?.data;
+  const data = raw != null && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const postObj = data.post && typeof data.post === 'object' ? data.post : {};
+  const merged = { ...data, ...postObj };
+  const postId = merged.postId ?? merged.id ?? merged.post_id;
+  if (postId == null || postId === '') {
+    throw new Error(json?.message || '등록 응답에 postId가 없습니다. 서버 스펙을 확인해 주세요.');
   }
   return {
     postId,

@@ -1,7 +1,11 @@
-import { useEffect, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { useRouter, useFocusEffect } from 'expo-router';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet,
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,12 +13,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/src/constants/colors';
 import { useAuth } from '@/src/auth/context';
 import { getMyPosts } from '@/src/auth/api';
+import { categoryToTabLabel, postCreatedAtMs } from '@/src/community/postMappers';
 
 const categoryColors = {
   '팁 공유': { bg: 'rgba(29,158,117,0.1)', border: 'rgba(29,158,117,0.2)', text: colors.teal500 },
   '점수 인증': { bg: 'rgba(55,138,221,0.1)', border: 'rgba(55,138,221,0.2)', text: colors.blue200 },
-  '질문': { bg: 'rgba(186,117,23,0.1)', border: 'rgba(186,117,23,0.2)', text: colors.amber400 },
-  '자유': { bg: colors.bgCard, border: colors.border, text: colors.textSecondary },
+  질문: { bg: 'rgba(186,117,23,0.1)', border: 'rgba(186,117,23,0.2)', text: colors.amber400 },
+  자유: { bg: colors.bgCard, border: colors.border, text: colors.textSecondary },
 };
 
 function formatDate(isoString) {
@@ -36,13 +41,32 @@ export default function MyPostsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (!session?.accessToken) { setLoading(false); return; }
-    getMyPosts(session.accessToken)
-      .then(({ posts: p }) => setPosts(p))
-      .catch((e) => setError(e.message || '불러오기에 실패했습니다.'))
-      .finally(() => setLoading(false));
+  const loadPosts = useCallback(async () => {
+    if (!session?.accessToken) {
+      setPosts([]);
+      setLoading(false);
+      setError('');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const { posts: p } = await getMyPosts(session.accessToken);
+      const sorted = [...p].sort((a, b) => postCreatedAtMs(b) - postCreatedAtMs(a));
+      setPosts(sorted);
+    } catch (e) {
+      setPosts([]);
+      setError(e.message || '불러오기에 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
   }, [session?.accessToken]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadPosts();
+    }, [loadPosts]),
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -54,9 +78,13 @@ export default function MyPostsScreen() {
         <View style={{ width: 36 }} />
       </View>
 
-      {loading ? (
+      {!session?.accessToken ? (
         <View style={styles.center}>
-          <ActivityIndicator color={colors.blue400} />
+          <Text style={styles.emptyText}>로그인 후 확인할 수 있어요.</Text>
+        </View>
+      ) : loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={colors.blue400} />
         </View>
       ) : error ? (
         <View style={styles.center}>
@@ -69,12 +97,18 @@ export default function MyPostsScreen() {
       ) : (
         <ScrollView showsVerticalScrollIndicator={false}>
           {posts.map((post) => {
-            const tc = categoryColors[post.category] ?? categoryColors['자유'];
+            const tag = categoryToTabLabel(post.category);
+            const tc = categoryColors[tag] ?? categoryColors.자유;
             return (
-              <TouchableOpacity key={post.postId} style={styles.postCard} activeOpacity={0.8}>
+              <TouchableOpacity
+                key={post.postId}
+                style={styles.postCard}
+                activeOpacity={0.8}
+                onPress={() => router.push(`/community/${post.postId}`)}
+              >
                 <View style={styles.postTop}>
                   <View style={[styles.tagBadge, { backgroundColor: tc.bg, borderColor: tc.border }]}>
-                    <Text style={[styles.tagText, { color: tc.text }]}>{post.category}</Text>
+                    <Text style={[styles.tagText, { color: tc.text }]}>{tag}</Text>
                   </View>
                   <Text style={styles.postTime}>{formatDate(post.createdAt)}</Text>
                 </View>
@@ -82,7 +116,9 @@ export default function MyPostsScreen() {
                 <Text style={styles.postTitle}>{post.title}</Text>
 
                 {post.content ? (
-                  <Text style={styles.postPreview} numberOfLines={2}>{post.content}</Text>
+                  <Text style={styles.postPreview} numberOfLines={2}>
+                    {post.content}
+                  </Text>
                 ) : null}
 
                 <View style={styles.postFooter}>
@@ -102,40 +138,55 @@ export default function MyPostsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgDark },
   header: {
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
   },
   backBtn: {
-    width: 36, height: 36, borderRadius: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     backgroundColor: 'rgba(255,255,255,0.06)',
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pageTitle: { fontSize: 17, fontWeight: '700', color: '#fff' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyText: { fontSize: 14, color: 'rgba(255,255,255,0.3)' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  emptyText: { fontSize: 14, color: 'rgba(255,255,255,0.3)', textAlign: 'center' },
   errorText: { fontSize: 13, color: colors.red400, textAlign: 'center', paddingHorizontal: 24 },
 
   postCard: {
-    marginHorizontal: 20, marginBottom: 12,
+    marginHorizontal: 20,
+    marginBottom: 12,
     backgroundColor: colors.bgCard,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 16, padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 16,
+    padding: 16,
   },
   postTop: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
   tagBadge: {
-    borderWidth: 1, borderRadius: 6,
-    paddingHorizontal: 8, paddingVertical: 3,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   tagText: { fontSize: 11, fontWeight: '500' },
   postTime: { fontSize: 11, color: 'rgba(255,255,255,0.3)' },
   postTitle: { fontSize: 15, fontWeight: '700', color: '#fff', marginBottom: 6 },
   postPreview: {
-    fontSize: 13, color: 'rgba(255,255,255,0.5)',
-    lineHeight: 20, marginBottom: 14,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.5)',
+    lineHeight: 20,
+    marginBottom: 14,
   },
   postFooter: { flexDirection: 'row', gap: 14 },
   actionText: { fontSize: 12, color: 'rgba(255,255,255,0.35)' },
