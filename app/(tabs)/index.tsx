@@ -108,21 +108,22 @@ export default function HomeScreen() {
       Alert.alert('로그인 필요', '로그인 후 이용해주세요.');
       return;
     }
-    if (!roadVideo) {
-      Alert.alert('안내', '운전자 카메라(A) 영상을 선택해주세요.');
-      return;
-    }
     if (!driverVideo) {
-      Alert.alert('안내', '후면 카메라(B) 영상을 선택해주세요.');
+      Alert.alert('안내', '내부 카메라 영상을 선택해주세요.');
       return;
     }
 
     setIsUploading(true);
-    setUploadPct(15);
+    setUploadPct(10);
     setUploadLabel('영상 업로드 중...');
     try {
+      // 외부 카메라(roadVideo) API — 엔드포인트 완성 후 여기에 추가
+      // await analyzeRoadVideo(session.accessToken, roadVideo);
+
+      setUploadPct(40);
+      setUploadLabel('내부 카메라 분석 중...');
       const result = await analyzeDriverVideo(session.accessToken, driverVideo);
-      setUploadPct(85);
+      setUploadPct(90);
       setUploadLabel('분석 완료!');
       setUploadPct(100);
       setTimeout(() => {
@@ -131,13 +132,8 @@ export default function HomeScreen() {
           setUploadPct(0);
           setUploadLabel('AI 분석 중...');
           router.push({
-            pathname: '/report',
-            params: {
-              sessionId: String(result.sessionId),
-              yawnCount: String(result.yawnCount ?? ''),
-              durationSec: String(result.durationSec ?? ''),
-              drowsinessEvents: JSON.stringify(result.drowsinessEvents ?? []),
-            },
+            pathname: '/(tabs)/report',
+            params: { sessionId: String(result.sessionId), fileName: driverVideo.name },
           });
         } catch {
           setIsUploading(false);

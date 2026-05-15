@@ -219,6 +219,7 @@ export default function CommunityScreen() {
         showsHorizontalScrollIndicator={false}
         style={styles.tabsScroll}
         contentContainerStyle={styles.tabsRow}
+        alwaysBounceHorizontal={false}
       >
         {TABS.map((tab) => (
           <TouchableOpacity
@@ -382,14 +383,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  tabsScroll: { flexGrow: 0, marginBottom: 12 },
-  tabsRow: { paddingHorizontal: 20, alignItems: 'center', gap: 8 },
+  tabsScroll: { flexGrow: 0, flexShrink: 0, marginBottom: 12 },
+  tabsRow: { paddingHorizontal: 20, paddingVertical: 2, alignItems: 'center', gap: 8 },
   tab: {
     paddingHorizontal: 16,
     paddingVertical: 7,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
+    flexShrink: 0,
   },
   tabActive: {
     backgroundColor: 'rgba(55,138,221,0.15)',

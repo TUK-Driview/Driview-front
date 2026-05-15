@@ -37,24 +37,24 @@ export default function OnboardingScreen() {
 
         {/* 설명 */}
         <Text style={styles.desc}>
-          듀얼 카메라 + GPS로 실시간 분석.{'\n'}
-          차선 이탈, 졸음 감지, 신호 위반까지{'\n'}
-          모두 잡아냅니다.
+          듀얼 카메라로 주행을 분석하고{'\n'}
+          차선 이탈, 졸음 감지까지 잡아냅니다.{'\n'}
+          운전 팁은 커뮤니티에서 나눠보세요.
         </Text>
 
         {/* 기능 카드 3개 */}
         <View style={styles.features}>
           <View style={styles.featCard}>
             <Text style={styles.featIcon}>📹</Text>
-            <Text style={styles.featLabel}>듀얼 카메라{'\n'}녹화</Text>
+            <Text style={styles.featLabel}>듀얼 카메라{'\n'}분석</Text>
           </View>
           <View style={styles.featCard}>
-            <Text style={styles.featIcon}>🧠</Text>
+            <Text style={styles.featIcon}>🛣️</Text>
             <Text style={styles.featLabel}>AI 차선{'\n'}분석</Text>
           </View>
           <View style={styles.featCard}>
-            <Text style={styles.featIcon}>📍</Text>
-            <Text style={styles.featLabel}>GPS 경로{'\n'}추적</Text>
+            <Text style={styles.featIcon}>💬</Text>
+            <Text style={styles.featLabel}>운전팁{'\n'}커뮤니티</Text>
           </View>
         </View>
 
@@ -100,7 +100,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
-    paddingVertical: 40,
+    paddingTop: 20,
+    paddingBottom: 60,
   },
   mascot: {
     width: 110,
@@ -116,6 +117,10 @@ const styles = StyleSheet.create({
   },
   mascotEmoji: {
     fontSize: 48,
+    lineHeight: 56,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    marginBottom: 4,
   },
   aiBadgeSmall: {
     position: 'absolute',
