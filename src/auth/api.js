@@ -303,6 +303,30 @@ export async function getMe(accessToken) {
   return requestApi(authConfig.endpoints.me, { token: accessToken });
 }
 
+/** GET 운행 리포트 상세 — path: /api/driving/{sessionId}/report */
+export async function getDrivingReport(accessToken, sessionId) {
+  const json = await requestApi(
+    `${authConfig.endpoints.drivingReport}/${encodeURIComponent(String(sessionId))}/report`,
+    { token: accessToken },
+  );
+  return json?.data ?? null;
+}
+
+/** GET 운전 세션 목록 — query: year, month (required); data: { year, month, sessions[{ sessionId, startedAt, durationMin, score }] } */
+export async function getDrivingSessions(accessToken, { year, month }) {
+  const json = await requestApi(authConfig.endpoints.drivingSessions, {
+    method: 'GET',
+    query: { year, month },
+    token: accessToken,
+  });
+  const d = json?.data;
+  return {
+    year: d?.year ?? year,
+    month: d?.month ?? month,
+    sessions: Array.isArray(d?.sessions) ? d.sessions : [],
+  };
+}
+
 /** GET 알림 설정 — data: { driveReportAlert, drowsinessAlert, communityCommentAlert, communityLikeAlert, marketingAlert } */
 export async function getNotificationSettings(accessToken) {
   const json = await requestApi(authConfig.endpoints.notificationSettings, { token: accessToken });
@@ -399,6 +423,7 @@ export async function analyzeDriverVideo(accessToken, file) {
   });
 
   const json = await res.json().catch(() => ({}));
+  console.log('[analyzeDriverVideo] status:', res.status, 'body:', JSON.stringify(json));
 
   if (json && json.isSuccess === false) {
     throw new Error(json.message || '영상 분석에 실패했습니다.');

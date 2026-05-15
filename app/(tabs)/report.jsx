@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import { colors } from '@/src/constants/colors';
+import { useAuth } from '@/src/auth/context';
+import { getDrivingSessions, getDrivingReport } from '@/src/auth/api';
 
 function ScoreRing({ score, color }) {
   const size = 120;
@@ -46,73 +48,25 @@ function ScoreRing({ score, color }) {
   );
 }
 
-const metricsBase = [
-  { label: '차선 준수', val: 95, sub: '이탈 1회 감지', color: colors.teal500 },
-  { label: '주의 집중', val: 90, sub: '졸음 0회 감지', color: colors.blue400 },
-  { label: '속도 준수', val: 88, sub: '과속 구간 1회', color: colors.amber400 },
-  { label: '급가감속',  val: 82, sub: '급제동 2회',    color: colors.red400 },
-];
 
-const adviceItems = [
-  '1호선 고가 구간에서 차선 이탈이 감지되었습니다. 핸들 유지와 감속에 신경 써주세요.',
-  '수원IC 진입 구간에서 급제동이 발생했습니다. 앞차와의 거리를 더 확보해보세요.',
-  '전반적으로 안전한 운전 패턴입니다. 현재 수준을 유지하면 상위 등급이 가능합니다.',
-];
+function scoreColor(score) {
+  if (score >= 90) return colors.teal500;
+  if (score >= 80) return colors.blue200;
+  if (score >= 70) return '#EF9F27';
+  return colors.red400;
+}
 
-const reportItems = [
-  { date: '2026.01.22', time: '22:30', route: '안산 → 수원', meta: '32km · 48분', score: 91, color: colors.teal500 },
-  { date: '2026.01.20', time: '18:15', route: '안산 → 시흥', meta: '18km · 31분', score: 78, color: '#EF9F27' },
-  { date: '2026.01.18', time: '10:00', route: '안산 → 인천', meta: '44km · 62분', score: 88, color: colors.teal500 },
-  { date: '2025.12.31', time: '23:00', route: '인천 → 서울', meta: '52km · 71분', score: 84, color: colors.blue200 },
-  { date: '2025.12.28', time: '09:20', route: '안산 → 수원', meta: '30km · 44분', score: 71, color: colors.red400 },
-];
+function formatStartedAt(iso) {
+  if (!iso) return { date: '—', time: '—' };
+  const d = new Date(iso);
+  const date = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return { date, time };
+}
 
-const VIDEO_DURATION_SEC = 48 * 60 + 20;
-
-const violationTimelineItems = [
-  {
-    id: 'lane',
-    seekSec: 214,
-    timeLabel: '3:34',
-    dotColor: '#EF9F27',
-    accent: '#EF9F27',
-    borderColor: 'rgba(239,159,39,0.4)',
-    badgeBg: 'rgba(239,159,39,0.2)',
-    icon: 'warning',
-    iconColor: '#F5C842',
-    title: '차선 이탈',
-    subtitle: '1호선 고가 구간 · 1회',
-  },
-  {
-    id: 'brake',
-    seekSec: 1870,
-    timeLabel: '31:10',
-    dotColor: colors.red400,
-    accent: colors.red400,
-    borderColor: 'rgba(226,75,74,0.45)',
-    badgeBg: 'rgba(226,75,74,0.2)',
-    icon: 'stop-circle',
-    iconColor: colors.red400,
-    title: '급제동',
-    subtitle: '수원IC 진입 구간 · 1회',
-  },
-  {
-    id: 'speed',
-    seekSec: 2680,
-    timeLabel: '44:40',
-    dotColor: '#EF9F27',
-    accent: '#EF9F27',
-    borderColor: 'rgba(239,159,39,0.4)',
-    badgeBg: 'rgba(239,159,39,0.2)',
-    icon: 'rocket-outline',
-    iconColor: '#F5C842',
-    title: '과속',
-    subtitle: '동수원 IC 합류 구간',
-  },
-];
 
 function formatVideoTime(totalSeconds) {
-  const s = Math.max(0, Math.min(totalSeconds, VIDEO_DURATION_SEC));
+  const s = Math.max(0, totalSeconds);
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, '0')}`;
@@ -120,28 +74,124 @@ function formatVideoTime(totalSeconds) {
 
 export default function ReportScreen() {
   const router = useRouter();
+  const { session } = useAuth();
+  const { sessionId: paramSessionId, fileName: paramFileName } = useLocalSearchParams();
   const [selected, setSelected] = useState(null);
   const [videoSec, setVideoSec] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [reportDetail, setReportDetail] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [sessions, setSessions] = useState([]);
+  const [loadingSessions, setLoadingSessions] = useState(true);
 
   useEffect(() => {
-    if (selected) {
-      setVideoSec(219);
-      setIsPlaying(true);
+    if (!session?.accessToken) { setLoadingSessions(false); return; }
+    setLoadingSessions(true);
+    getDrivingSessions(session.accessToken, { year, month })
+      .then(({ sessions: s }) => setSessions(s))
+      .catch(() => setSessions([]))
+      .finally(() => setLoadingSessions(false));
+  }, [session?.accessToken, year, month]);
+
+  useEffect(() => {
+    if (paramSessionId) {
+      let date = '—';
+      let time = '—';
+      const match = String(paramFileName ?? '').match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+      if (match) {
+        date = `${match[1]}.${match[2]}.${match[3]}`;
+        time = `${match[4]}:${match[5]}`;
+      }
+      setSelected({ sessionId: Number(paramSessionId), date, time, score: 0, color: colors.blue400, meta: '—' });
     }
-  }, [selected?.date, selected?.time]);
+  }, [paramSessionId]);
+
+  const prevMonth = () => {
+    if (month === 1) { setYear((y) => y - 1); setMonth(12); }
+    else setMonth((m) => m - 1);
+  };
+  const nextMonth = () => {
+    if (month === 12) { setYear((y) => y + 1); setMonth(1); }
+    else setMonth((m) => m + 1);
+  };
+
+  useEffect(() => {
+    if (!selected) return;
+    setVideoSec(0);
+    setIsPlaying(false);
+    setReportDetail(null);
+    if (!session?.accessToken) return;
+    setLoadingDetail(true);
+    getDrivingReport(session.accessToken, selected.sessionId)
+      .then((data) => setReportDetail(data))
+      .catch(() => {})
+      .finally(() => setLoadingDetail(false));
+  }, [selected?.sessionId]);
 
   const gradeText = useMemo(() => {
     if (!selected) return '';
+    if (reportDetail?.grade) return reportDetail.grade;
     if (selected.score >= 90) return '안전 운전 우수 등급';
     if (selected.score >= 80) return '양호 등급';
     if (selected.score >= 70) return '주의 필요 등급';
     return '위험 운전 등급';
-  }, [selected]);
+  }, [selected, reportDetail]);
 
-  const seekTo = (sec) => setVideoSec(Math.max(0, Math.min(sec, VIDEO_DURATION_SEC)));
+  const metrics = useMemo(() => {
+    if (!reportDetail) return [];
+    return [
+      { label: '차선 준수', val: reportDetail.laneScore ?? 0, sub: `이탈 ${reportDetail.laneViolationCount ?? 0}회 감지`, color: colors.teal500 },
+      { label: '주의 집중', val: reportDetail.focusScore ?? 0, sub: `졸음 ${reportDetail.drowsinessCount ?? 0}회 감지`, color: colors.blue400 },
+      { label: '속도 준수', val: reportDetail.speedScore ?? 0, sub: `과속 ${reportDetail.speedViolationCount ?? 0}회`, color: colors.amber400 },
+      { label: '급가감속', val: Math.max(0, 100 - (reportDetail.hardBrakingCount ?? 0) * 10), sub: `급제동 ${reportDetail.hardBrakingCount ?? 0}회`, color: colors.red400 },
+    ];
+  }, [reportDetail]);
 
-  const videoProgress = VIDEO_DURATION_SEC > 0 ? videoSec / VIDEO_DURATION_SEC : 0;
+  const timelineItems = useMemo(() => {
+    if (!reportDetail?.drowsinessEvents?.length) return [];
+    return reportDetail.drowsinessEvents.map((ev, i) => {
+      const sec = Math.round(ev.timestampSec ?? 0);
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      const timeLabel = `${m}:${String(s).padStart(2, '0')}`;
+      const isDrowsy = String(ev.type ?? '').toLowerCase().includes('drow');
+      return {
+        id: `ev-${i}`,
+        seekSec: sec,
+        timeLabel,
+        dotColor: isDrowsy ? colors.red400 : '#EF9F27',
+        accent: isDrowsy ? colors.red400 : '#EF9F27',
+        borderColor: isDrowsy ? 'rgba(226,75,74,0.45)' : 'rgba(239,159,39,0.4)',
+        badgeBg: isDrowsy ? 'rgba(226,75,74,0.2)' : 'rgba(239,159,39,0.2)',
+        icon: isDrowsy ? 'eye-off-outline' : 'alert-circle-outline',
+        iconColor: isDrowsy ? colors.red400 : '#F5C842',
+        title: isDrowsy ? '졸음 감지' : '하품',
+        subtitle: `${ev.type ?? ''} · ${timeLabel}`,
+      };
+    });
+  }, [reportDetail]);
+
+  const adviceList = useMemo(() => {
+    if (!reportDetail) return [];
+    const items = [];
+    if ((reportDetail.laneViolationCount ?? 0) > 0) items.push(`차선 이탈이 ${reportDetail.laneViolationCount}회 감지되었습니다. 핸들 유지와 집중에 신경 써주세요.`);
+    if ((reportDetail.drowsinessCount ?? 0) > 0 || (reportDetail.yawn_count ?? 0) > 0) items.push(`졸음·하품이 감지되었습니다. 충분한 휴식 후 운전하세요.`);
+    if ((reportDetail.hardBrakingCount ?? 0) > 0) items.push(`급제동이 ${reportDetail.hardBrakingCount}회 발생했습니다. 앞차와의 거리를 더 확보해보세요.`);
+    if ((reportDetail.speedViolationCount ?? 0) > 0) items.push(`과속 구간이 ${reportDetail.speedViolationCount}회 있었습니다. 제한 속도를 준수해주세요.`);
+    if (items.length === 0) items.push('전반적으로 안전한 운전 패턴입니다. 현재 수준을 유지하면 상위 등급이 가능합니다.');
+    return items;
+  }, [reportDetail]);
+
+  const videoDurationSec = reportDetail?.duration_sec ?? 0;
+  const scoreVal = reportDetail?.score ?? selected?.score ?? 0;
+  const colorVal = scoreColor(scoreVal);
+
+  const seekTo = (sec) => setVideoSec(Math.max(0, Math.min(sec, videoDurationSec)));
+  const videoProgress = videoDurationSec > 0 ? videoSec / videoDurationSec : 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -159,32 +209,43 @@ export default function ReportScreen() {
             </TouchableOpacity>
             <Text style={styles.pageTitle}>운행 리포트</Text>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            <Text style={styles.monthLabel}>2026년 1월</Text>
-            {reportItems.slice(0, 3).map((item) => (
-              <TouchableOpacity key={`${item.date}-${item.time}`} style={styles.driveCard} onPress={() => setSelected(item)} activeOpacity={0.85}>
-                <View style={[styles.driveIcon, { backgroundColor: 'rgba(55,138,221,0.12)' }]} />
-                <View style={styles.driveInfo}>
-                  <Text style={styles.driveDate}>{item.date} · {item.time}</Text>
-                  <Text style={styles.driveTitle}>{item.route}</Text>
-                  <Text style={styles.driveMeta}>{item.meta}</Text>
-                </View>
-                <Text style={[styles.driveScore, { color: item.color }]}>{item.score}</Text>
-              </TouchableOpacity>
-            ))}
+          <View style={styles.monthNav}>
+            <TouchableOpacity onPress={prevMonth} style={styles.monthNavBtn}>
+              <Ionicons name="chevron-back" size={18} color="rgba(255,255,255,0.6)" />
+            </TouchableOpacity>
+            <Text style={styles.monthNavLabel}>{year}년 {month}월</Text>
+            <TouchableOpacity onPress={nextMonth} style={styles.monthNavBtn}>
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.6)" />
+            </TouchableOpacity>
+          </View>
 
-            <Text style={styles.monthLabel}>2025년 12월</Text>
-            {reportItems.slice(3).map((item) => (
-              <TouchableOpacity key={`${item.date}-${item.time}`} style={styles.driveCard} onPress={() => setSelected(item)} activeOpacity={0.85}>
-                <View style={[styles.driveIcon, { backgroundColor: 'rgba(55,138,221,0.12)' }]} />
-                <View style={styles.driveInfo}>
-                  <Text style={styles.driveDate}>{item.date} · {item.time}</Text>
-                  <Text style={styles.driveTitle}>{item.route}</Text>
-                  <Text style={styles.driveMeta}>{item.meta}</Text>
-                </View>
-                <Text style={[styles.driveScore, { color: item.color }]}>{item.score}</Text>
-              </TouchableOpacity>
-            ))}
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {loadingSessions ? (
+              <View style={styles.center}>
+                <ActivityIndicator color={colors.blue400} />
+              </View>
+            ) : sessions.length === 0 ? (
+              <View style={styles.center}>
+                <Text style={styles.emptyText}>이번 달 운행 기록이 없습니다.</Text>
+              </View>
+            ) : (
+              sessions.map((s) => {
+                const { date, time } = formatStartedAt(s.startedAt);
+                const color = scoreColor(s.score);
+                const item = { sessionId: s.sessionId, date, time, score: s.score, color, meta: `${s.durationMin ?? 0}분` };
+                return (
+                  <TouchableOpacity key={s.sessionId} style={styles.driveCard} onPress={() => setSelected(item)} activeOpacity={0.85}>
+                    <View style={[styles.driveIcon, { backgroundColor: 'rgba(55,138,221,0.12)' }]} />
+                    <View style={styles.driveInfo}>
+                      <Text style={styles.driveDate}>{date} · {time}</Text>
+                      <Text style={styles.driveTitle}>운행 기록</Text>
+                      <Text style={styles.driveMeta}>{s.durationMin ?? 0}분</Text>
+                    </View>
+                    <Text style={[styles.driveScore, { color }]}>{s.score}</Text>
+                  </TouchableOpacity>
+                );
+              })
+            )}
             <View style={{ height: 20 }} />
           </ScrollView>
         </>
@@ -206,13 +267,19 @@ export default function ReportScreen() {
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
             <LinearGradient colors={['#0d2a4a', '#0d3a2e']} style={styles.heroCard}>
-              <Text style={styles.heroDate}>{selected.date} · {selected.route} · {selected.meta}</Text>
-              <ScoreRing score={selected.score} color={selected.color} />
+              <Text style={styles.heroDate}>{selected.date} · {selected.time} · {selected.meta}</Text>
+              <ScoreRing score={scoreVal} color={colorVal} />
               <Text style={styles.heroGrade}>{gradeText}</Text>
             </LinearGradient>
 
+            {loadingDetail ? (
+              <View style={styles.center}>
+                <ActivityIndicator color={colors.blue400} style={{ marginVertical: 32 }} />
+              </View>
+            ) : (
+            <>
             <View style={styles.metricsGrid}>
-              {metricsBase.map((m) => (
+              {metrics.map((m) => (
                 <View key={m.label} style={styles.metricCard}>
                   <View style={styles.metricHeader}>
                     <View style={[styles.metricDot, { backgroundColor: m.color }]} />
@@ -250,13 +317,15 @@ export default function ReportScreen() {
                     </View>
                     <View style={[styles.videoKnob, { left: `${videoProgress * 100}%` }]} />
                   </View>
-                  <Text style={styles.videoTimeRight}>{formatVideoTime(VIDEO_DURATION_SEC)}</Text>
+                  <Text style={styles.videoTimeRight}>{formatVideoTime(videoDurationSec)}</Text>
                 </View>
               </View>
 
-              <Text style={styles.timelineTitle}>위반 구간 타임라인</Text>
+              {timelineItems.length > 0 && (
+                <Text style={styles.timelineTitle}>이벤트 타임라인</Text>
+              )}
 
-              {violationTimelineItems.map((ev) => (
+              {timelineItems.map((ev) => (
                 <View key={ev.id} style={styles.timelineRow}>
                   <View style={styles.timelineGutter}>
                     <Text style={styles.timelineGutterTime}>{ev.timeLabel}</Text>
@@ -284,16 +353,20 @@ export default function ReportScreen() {
               ))}
             </View>
 
-            <View style={styles.adviceBox}>
-              <Text style={styles.adviceHead}>AI 개선 조언</Text>
-              {adviceItems.map((text, i) => (
-                <View key={text} style={styles.adviceItem}>
-                  <View style={styles.adviceNum}><Text style={styles.adviceNumText}>{i + 1}</Text></View>
-                  <Text style={styles.adviceText}>{text}</Text>
-                </View>
-              ))}
-            </View>
+            {adviceList.length > 0 && (
+              <View style={styles.adviceBox}>
+                <Text style={styles.adviceHead}>AI 개선 조언</Text>
+                {adviceList.map((text, i) => (
+                  <View key={String(i)} style={styles.adviceItem}>
+                    <View style={styles.adviceNum}><Text style={styles.adviceNumText}>{i + 1}</Text></View>
+                    <Text style={styles.adviceText}>{text}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
             <View style={{ height: 20 }} />
+            </>
+            )}
           </ScrollView>
         </>
       )}
@@ -316,6 +389,18 @@ const styles = StyleSheet.create({
   },
   pageTitle: { fontSize: 17, fontWeight: '700', color: '#fff' },
   pageTitleFlex: { flex: 1, flexShrink: 1 },
+  monthNav: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 14, gap: 16,
+  },
+  monthNavBtn: {
+    width: 32, height: 32, borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  monthNavLabel: { fontSize: 15, fontWeight: '700', color: '#fff', minWidth: 100, textAlign: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  emptyText: { fontSize: 14, color: 'rgba(255,255,255,0.3)' },
   monthLabel: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.3)', letterSpacing: 1 },
   driveCard: {
     marginHorizontal: 20, marginBottom: 12, borderRadius: 14, padding: 14,
