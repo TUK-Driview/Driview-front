@@ -38,7 +38,7 @@ export function getPostLikeTogglePath(postId) {
 
 /** GET 게시글 단건 — 성공 시 `data`: { postId, category, title, content, nickname, likeCount, commentCount, isLiked, createdAt } */
 export function getPostDetailPath(postId) {
-  return `/api/v1/posts/${encodeURIComponent(String(postId))}/`;
+  return `/api/v1/posts/${encodeURIComponent(String(postId))}`;
 }
 
 /** GET/POST 게시글 댓글 — Bearer; POST body `{ content }`, 200 data `{ commentId, nickname, content, createdAt }` */

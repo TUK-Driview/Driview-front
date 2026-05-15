@@ -36,6 +36,7 @@ async function requestApi(path, { method = 'GET', body, query, token } = {}) {
   });
 
   const json = await res.json().catch(() => ({}));
+  console.log(`[API] ${method} ${path} → ${res.status}${res.ok ? '' : ' ❌'} ${json?.message ?? ''}`);
 
   if (json && json.isSuccess === false) {
     throw new Error(json.message || '요청에 실패했습니다.');
@@ -141,6 +142,7 @@ export async function fetchPostDetail(accessToken, postId) {
     method: 'GET',
     token: accessToken,
   });
+  console.log('[fetchPostDetail] postId:', postId, 'response:', JSON.stringify(json));
   const d = json?.data ?? json?.result;
   if (d != null && typeof d === 'object' && !Array.isArray(d)) {
     const singleId = d.postId ?? d.id;
