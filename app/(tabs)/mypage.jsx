@@ -35,8 +35,8 @@ export default function MyPageScreen() {
   useEffect(() => {
     if (!session?.accessToken) { setLoading(false); return; }
     getMyProfile(session.accessToken)
-      .then((data) => setProfile(data))
-      .catch(() => {})
+      .then((data) => { console.warn('[mypage] profile:', JSON.stringify(data)); setProfile(data); })
+      .catch((e) => console.warn('[mypage] error:', e))
       .finally(() => setLoading(false));
   }, [session?.accessToken]);
 
@@ -44,12 +44,6 @@ export default function MyPageScreen() {
   const email = profile?.email ?? '—';
   const avgScore = profile != null ? Math.round(profile.avgScore ?? 0) : '—';
   const totalDrives = profile?.totalDriveCount ?? '—';
-  const totalKm = profile != null
-    ? (profile.totalDistanceKm >= 1000
-      ? `${(profile.totalDistanceKm / 1000).toFixed(1)}k`
-      : String(Math.round(profile.totalDistanceKm ?? 0)))
-    : '—';
-
   const onMenuPress = (item) => {
     if (item.action === 'logout') {
       void signOut()
@@ -86,7 +80,6 @@ export default function MyPageScreen() {
           {[
             { val: avgScore, label: '평균 점수' },
             { val: totalDrives, label: '총 운행' },
-            { val: totalKm, label: '총 주행km' },
           ].map((s) => (
             <View key={s.label} style={styles.statCard}>
               <Text style={styles.statVal}>{s.val}</Text>
