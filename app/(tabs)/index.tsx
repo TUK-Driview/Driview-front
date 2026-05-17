@@ -1,6 +1,7 @@
 import {
   analyzeDriverVideo,
   analyzeExternalVideo,
+  getDrivingSessions,
   getMyProfile,
   getUserStats,
 } from '@/src/auth/api';
@@ -8,8 +9,8 @@ import { useAuth } from '@/src/auth/context';
 import { colors } from '@/src/constants/colors';
 import * as DocumentPicker from 'expo-document-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   ScrollView,
@@ -41,6 +42,8 @@ export default function HomeScreen() {
     session: { accessToken: string } | null;
   };
   const [stats, setStats] = useState<UserStatsPayload | null>(null);
+  const [monthlyAvgFromSessions, setMonthlyAvgFromSessions] = useState<number | null>(null);
+  const [monthlySessionCount, setMonthlySessionCount] = useState(0);
   const [nickname, setNickname] = useState<string>('');
   const [roadVideo, setRoadVideo] = useState<DriverVideoPick | null>(null);
   const [driverVideo, setDriverVideo] = useState<DriverVideoPick | null>(null);
@@ -48,27 +51,44 @@ export default function HomeScreen() {
   const [uploadPct, setUploadPct] = useState(0);
   const [uploadLabel, setUploadLabel] = useState('AI 분석 중...');
 
-  useEffect(() => {
-    if (!session?.accessToken) return undefined;
-    let cancelled = false;
-    (async () => {
-      try {
-        const [data, profile] = await Promise.all([
-          getUserStats(session.accessToken) as Promise<UserStatsPayload | null>,
-          getMyProfile(session.accessToken),
-        ]);
-        if (!cancelled) {
-          if (data) setStats(data);
-          if (profile?.nickname) setNickname(profile.nickname);
-        }
-      } catch {
-        /* 오프라인·미설정 시 화면 기본값 유지 */
+  const loadHomeData = useCallback(async () => {
+    if (!session?.accessToken) return;
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    try {
+      const [data, profile, { sessions }] = await Promise.all([
+        getUserStats(session.accessToken) as Promise<UserStatsPayload | null>,
+        getMyProfile(session.accessToken),
+        getDrivingSessions(session.accessToken, { year, month }),
+      ]);
+      if (data) setStats(data);
+      if (profile?.nickname) setNickname(profile.nickname);
+
+      setMonthlySessionCount(sessions.length);
+      if (sessions.length > 0) {
+        const sum = sessions.reduce((acc: number, s: { score: number }) => acc + s.score, 0);
+        setMonthlyAvgFromSessions(Math.round(sum / sessions.length));
+      } else {
+        setMonthlyAvgFromSessions(null);
       }
-    })().catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+    } catch {
+      /* 오프라인·미설정 시 화면 기본값 유지 */
+    }
   }, [session?.accessToken]);
+
+  useEffect(() => {
+    void loadHomeData();
+  }, [loadHomeData]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadHomeData();
+    }, [loadHomeData]),
+  );
+
+  /** 이번 달 운행별로 받은 점수들의 평균 (세션 목록 API) */
+  const displayAvgScore = monthlyAvgFromSessions;
 
   const pickVideo = (setter: (v: DriverVideoPick) => void) => {
     void (async () => {
@@ -160,6 +180,7 @@ export default function HomeScreen() {
       setUploadPct(90);
       setUploadLabel('분석 완료!');
       setUploadPct(100);
+      void loadHomeData();
       setTimeout(() => {
         try {
           setIsUploading(false);
@@ -211,14 +232,16 @@ export default function HomeScreen() {
           end={{ x: 1, y: 1 }}
           style={styles.scoreCard}
         >
-          <Text style={styles.scoreLabel}>이번 달 종합 점수</Text>
+          <Text style={styles.scoreLabel}>이번 달 평균 점수</Text>
           <Text style={styles.scoreNumber}>
-            {stats != null ? Math.round(stats.avgScore) : 87}
+            {displayAvgScore != null ? displayAvgScore : '—'}
             <Text style={styles.scoreMax}>/100</Text>
           </Text>
           <View style={styles.scoreBadge}>
             <Text style={styles.scoreBadgeText}>
-              {stats != null ? `누적 주행 ${stats.totalDrives ?? 0}회 · ${Number(stats.totalKm ?? 0).toLocaleString()}km` : '↑ 지난달 대비 +3점'}
+              {monthlySessionCount > 0
+                ? `이번 달 운행 ${monthlySessionCount}회 받은 점수의 평균`
+                : '이번 달 분석된 운행이 없습니다'}
             </Text>
           </View>
           <View style={styles.scoreBars}>
@@ -242,9 +265,14 @@ export default function HomeScreen() {
           {[
             {
               icon: '🛣️',
-              val: stats != null ? String(stats.monthlyDrives ?? 0) : '328',
-              unit: stats != null ? '회' : 'km',
-              label: stats != null ? '이번 달 운행' : '이번 달 주행',
+              val:
+                monthlySessionCount > 0
+                  ? String(monthlySessionCount)
+                  : stats != null
+                    ? String(stats.monthlyDrives ?? 0)
+                    : '328',
+              unit: stats != null || monthlySessionCount > 0 ? '회' : 'km',
+              label: stats != null || monthlySessionCount > 0 ? '이번 달 운행' : '이번 달 주행',
               bg: 'rgba(29,158,117,0.15)',
             },
             {

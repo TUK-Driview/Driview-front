@@ -22,7 +22,7 @@ export const authConfig = {
     notificationSettings: '/api/users/me/notification-settings',
     /** GET 내가 쓴 글 목록 — Bearer; 응답 data: { totalCount, posts[] } */
     myPosts: '/api/users/posts',
-    /** GET 운전 세션 목록 — Bearer; query year(required), month(required); data: { year, month, sessions[{ sessionId, startedAt, durationMin, score }] } */
+    /** GET 세션 목록 — Bearer; query year, month; `{ success, data: { year, month, sessions[] } }` */
     drivingSessions: '/api/driving/session',
     /** GET 운행 리포트 상세 — Bearer; path /{sessionId}/report; data: { sessionId, score, grade, laneScore, focusScore, speedScore, laneViolationCount, drowsinessCount, speedViolationCount, hardBrakingCount, yawn_count, duration_sec, drowsinessEvents[] } */
     drivingReport: '/api/driving',
