@@ -135,7 +135,7 @@ function unwrapPostDetailPayload(json) {
   return null;
 }
 
-/** GET `/api/v1/posts/{postId}/` — 단건. `data`에 게시글 필드가 직접 오는 형태 */
+/** GET `/api/v1/posts/{postId}` — 단건. `data`에 게시글 필드가 직접 오는 형태 */
 export async function fetchPostDetail(accessToken, postId) {
   const json = await requestApi(getPostDetailPath(postId), {
     method: 'GET',
