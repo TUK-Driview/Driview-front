@@ -323,15 +323,17 @@ export async function getDrivingSessions(accessToken, { year, month }) {
     query: { year: Number(year), month: Number(month) },
     token: accessToken,
   });
-
+  if (json?.success === false) {
+    throw new Error(json?.message || '세션 목록 조회에 실패했습니다.');
+  }
   const d = json?.data;
   const rawSessions = Array.isArray(d?.sessions) ? d.sessions : [];
 
   const sessions = rawSessions.map((s) => ({
     sessionId: Number(s.sessionId ?? s.id),
     startedAt: s.startedAt ?? s.started_at ?? null,
-    durationMin: Number(s.durationMin ?? s.duration_min ?? 0),
-    score: Number(s.score ?? 0),
+    durationSec: Number(s.durationSec ?? s.duration_sec ?? 0),
+    score: s.score != null ? Number(s.score) : null,
   })).filter((s) => !Number.isNaN(s.sessionId));
 
   return {
@@ -411,10 +413,7 @@ export async function logout(accessToken) {
   });
 }
 
-function logVideoAnalyze(tag, message, extra) {
-  const suffix = extra != null ? ` ${JSON.stringify(extra)}` : '';
-  console.warn(`[Driview:${tag}] ${message}${suffix}`);
-}
+function logVideoAnalyze(_tag, _message, _extra) {}
 
 /**
  * multipart 영상 분석 공통 처리

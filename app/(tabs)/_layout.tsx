@@ -1,4 +1,4 @@
-import { Tabs } from 'expo-router';
+import { Tabs, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/src/constants/colors';
 
@@ -35,6 +35,12 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => (
             <Ionicons name="document-text-outline" size={22} color={color} />
           ),
+        }}
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault();
+            router.navigate({ pathname: '/(tabs)/report', params: { _reset: String(Date.now()) } });
+          },
         }}
       />
       <Tabs.Screen
