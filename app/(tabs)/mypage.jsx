@@ -21,7 +21,7 @@ const menuGroups = [
     items: [
       { icon: '🔔', label: '알림 설정', route: '/notification-settings' },
       { icon: '🔒', label: '개인정보 처리방침', route: '/privacy-policy' },
-      { icon: '🚪', label: '로그아웃', route: '/login', danger: true },
+      { icon: '🚪', label: '로그아웃', action: 'logout', danger: true },
     ],
   },
 ];
@@ -49,6 +49,20 @@ export default function MyPageScreen() {
       ? `${(profile.totalDistanceKm / 1000).toFixed(1)}k`
       : String(Math.round(profile.totalDistanceKm ?? 0)))
     : '—';
+
+  const onMenuPress = (item) => {
+    if (item.action === 'logout') {
+      void signOut()
+        .catch(() => {})
+        .finally(() => {
+          router.replace('/login');
+        });
+      return;
+    }
+    if (item.route) {
+      router.push(item.route);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -89,14 +103,7 @@ export default function MyPageScreen() {
               <TouchableOpacity
                 key={item.label}
                 style={styles.menuItem}
-                onPress={async () => {
-                  if (item.label === '로그아웃') {
-                    await signOut();
-                    router.replace('/login');
-                    return;
-                  }
-                  if (item.route) router.push(item.route);
-                }}
+                onPress={() => onMenuPress(item)}
                 activeOpacity={0.7}
               >
                 <View style={styles.menuIcon}>

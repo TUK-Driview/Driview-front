@@ -1,78 +1,104 @@
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useCallback } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/src/constants/colors';
+import { useAuth } from '@/src/auth/context';
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const { isAuthenticated, isBootstrapping } = useAuth();
+
+  const onStart = useCallback(() => {
+    if (isBootstrapping) return;
+    if (isAuthenticated) {
+      router.replace('/(tabs)');
+      return;
+    }
+    router.replace('/login');
+  }, [isAuthenticated, isBootstrapping, router]);
 
   return (
     <LinearGradient
       colors={['#0d1b3e', '#0a1628', '#071020']}
       style={styles.container}
     >
-      {/* 배경 원 */}
-      <View style={styles.bgCircle1} />
-      <View style={styles.bgCircle2} />
+      <View style={styles.bgCircle1} pointerEvents="none" />
+      <View style={styles.bgCircle2} pointerEvents="none" />
 
-      <View style={styles.content}>
-        {/* 마스코트 */}
-        <View style={styles.mascot}>
-          <Text style={styles.mascotEmoji}>🚗</Text>
-          <View style={styles.aiBadgeSmall}>
-            <Text style={styles.aiBadgeText}>AI</Text>
-          </View>
-        </View>
-
-        {/* 배지 */}
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>AI 기반 운전 분석</Text>
-        </View>
-
-        {/* 타이틀 */}
-        <Text style={styles.title}>
-          더 안전한 운전을{'\n'}
-          <Text style={styles.titleHighlight}>시작하세요</Text>
-        </Text>
-
-        {/* 설명 */}
-        <Text style={styles.desc}>
-          듀얼 카메라로 주행을 분석하고{'\n'}
-          차선 이탈, 졸음 감지까지 잡아냅니다.{'\n'}
-          운전 팁은 커뮤니티에서 나눠보세요.
-        </Text>
-
-        {/* 기능 카드 3개 */}
-        <View style={styles.features}>
-          <View style={styles.featCard}>
-            <Text style={styles.featIcon}>📹</Text>
-            <Text style={styles.featLabel}>듀얼 카메라{'\n'}분석</Text>
-          </View>
-          <View style={styles.featCard}>
-            <Text style={styles.featIcon}>🛣️</Text>
-            <Text style={styles.featLabel}>AI 차선{'\n'}분석</Text>
-          </View>
-          <View style={styles.featCard}>
-            <Text style={styles.featIcon}>💬</Text>
-            <Text style={styles.featLabel}>운전팁{'\n'}커뮤니티</Text>
-          </View>
-        </View>
-
-        {/* 시작 버튼 */}
-        <TouchableOpacity
-          style={styles.btn}
-          onPress={() => router.replace('/login')}
-          activeOpacity={0.85}
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.btnText}>시작하기 →</Text>
-        </TouchableOpacity>
-      </View>
+          <View style={styles.content}>
+            <View style={styles.mascot}>
+              <Text style={styles.mascotEmoji}>🚗</Text>
+              <View style={styles.aiBadgeSmall}>
+                <Text style={styles.aiBadgeText}>AI</Text>
+              </View>
+            </View>
+
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>AI 기반 운전 분석</Text>
+            </View>
+
+            <Text style={styles.title}>
+              더 안전한 운전을{'\n'}
+              <Text style={styles.titleHighlight}>시작하세요</Text>
+            </Text>
+
+            <Text style={styles.desc}>
+              듀얼 카메라로 주행을 분석하고{'\n'}
+              차선 이탈, 졸음 감지까지 잡아냅니다.{'\n'}
+              운전 팁은 커뮤니티에서 나눠보세요.
+            </Text>
+
+            <View style={styles.features}>
+              <View style={styles.featCard}>
+                <Text style={styles.featIcon}>📹</Text>
+                <Text style={styles.featLabel}>듀얼 카메라{'\n'}분석</Text>
+              </View>
+              <View style={styles.featCard}>
+                <Text style={styles.featIcon}>🛣️</Text>
+                <Text style={styles.featLabel}>AI 차선{'\n'}분석</Text>
+              </View>
+              <View style={styles.featCard}>
+                <Text style={styles.featIcon}>💬</Text>
+                <Text style={styles.featLabel}>운전팁{'\n'}커뮤니티</Text>
+              </View>
+            </View>
+          </View>
+        </ScrollView>
+
+        <View style={styles.footer}>
+          <TouchableOpacity
+            style={styles.btn}
+            onPress={onStart}
+            activeOpacity={0.85}
+            disabled={isBootstrapping}
+          >
+            <Text style={styles.btnText}>시작하기 →</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  safe: {
     flex: 1,
   },
   bgCircle1: {
@@ -95,13 +121,21 @@ const styles = StyleSheet.create({
     bottom: 100,
     left: -60,
   },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 32,
+    paddingTop: 20,
+    paddingBottom: 16,
+  },
   content: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 480,
+  },
+  footer: {
     paddingHorizontal: 32,
-    paddingTop: 20,
-    paddingBottom: 60,
+    paddingBottom: 8,
   },
   mascot: {
     width: 110,
@@ -140,21 +174,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.blue200,
   },
-  dots: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 16,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  dotActive: {
-    width: 20,
-    backgroundColor: colors.blue400,
-  },
   badge: {
     backgroundColor: 'rgba(55,138,221,0.2)',
     borderWidth: 1,
@@ -190,7 +209,6 @@ const styles = StyleSheet.create({
   features: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 32,
     width: '100%',
   },
   featCard: {

@@ -20,7 +20,8 @@ function AuthGate() {
       router.replace('/login');
       return;
     }
-    if (isAuthenticated && isAuthScreen) {
+    // onboarding → login 은 허용. 로그인·회원가입만 홈으로 보냄
+    if (isAuthenticated && (root === 'login' || root === 'signup')) {
       router.replace('/(tabs)');
     }
   }, [segments, isAuthenticated, isBootstrapping, router]);

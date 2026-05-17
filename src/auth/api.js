@@ -397,38 +397,71 @@ export async function logout(accessToken) {
   });
 }
 
+function logVideoAnalyze(tag, message, extra) {
+  const suffix = extra != null ? ` ${JSON.stringify(extra)}` : '';
+  console.warn(`[Driview:${tag}] ${message}${suffix}`);
+}
+
 /**
  * multipart 영상 분석 공통 처리
- * @returns {{ sessionId: number|string; lane_departure_count?: number; duration_sec?: number; lane_departure_timestamps?: number[] }}
+ * @param {{ uri: string; name: string; mimeType?: string }} file
  */
-async function postVideoAnalyze(accessToken, endpointPath, file, defaultName) {
+async function postVideoAnalyze(accessToken, endpointPath, file, defaultName, tag) {
   const base = authConfig.apiBaseUrl?.replace(/\/$/, '');
   if (!base) {
     throw new Error('EXPO_PUBLIC_API_BASE_URL is not set.');
   }
   const url = `${base}${endpointPath}`;
-  const formData = new FormData();
-  formData.append('file', {
+  const filePart = {
     uri: file.uri,
     name: file.name || defaultName,
     type: file.mimeType || 'video/mp4',
+  };
+  const formData = new FormData();
+  formData.append('file', filePart);
+
+  logVideoAnalyze(tag, 'request', {
+    url,
+    fileName: filePart.name,
+    mimeType: filePart.type,
+    uriPrefix: String(file.uri).slice(0, 60),
   });
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: formData,
-  });
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: formData,
+    });
+  } catch (e) {
+    logVideoAnalyze(tag, 'network error', {
+      message: e instanceof Error ? e.message : String(e),
+    });
+    throw e;
+  }
 
-  const json = await res.json().catch(() => ({}));
+  const rawText = await res.text().catch(() => '');
+  let json = {};
+  try {
+    json = rawText ? JSON.parse(rawText) : {};
+  } catch {
+    json = { _raw: rawText.slice(0, 500) };
+  }
+
+  logVideoAnalyze(tag, 'response', {
+    status: res.status,
+    ok: res.ok,
+    body: json,
+  });
 
   if (json?.isSuccess === false || json?.success === false) {
     throw new Error(json?.message || '영상 분석에 실패했습니다.');
   }
   if (!res.ok) {
-    throw new Error(json?.message || '영상 분석 요청에 실패했습니다.');
+    throw new Error(json?.message || `영상 분석 요청에 실패했습니다. (${res.status})`);
   }
 
   const payload =
@@ -439,15 +472,23 @@ async function postVideoAnalyze(accessToken, endpointPath, file, defaultName) {
         : null;
 
   if (!payload || payload.sessionId == null) {
+    logVideoAnalyze(tag, 'invalid payload', { json });
     throw new Error(json?.message || '분석 응답이 올바르지 않습니다.');
   }
 
+  logVideoAnalyze(tag, 'success', { sessionId: payload.sessionId });
   return payload;
 }
 
 /** POST `/api/faceai/analyze` — 내부 카메라 (multipart `file`) */
 export async function analyzeDriverVideo(accessToken, file) {
-  return postVideoAnalyze(accessToken, authConfig.endpoints.faceAiAnalyze, file, 'driver.mp4');
+  return postVideoAnalyze(
+    accessToken,
+    authConfig.endpoints.faceAiAnalyze,
+    file,
+    'driver.mp4',
+    'faceai',
+  );
 }
 
 /**
@@ -455,7 +496,13 @@ export async function analyzeDriverVideo(accessToken, file) {
  * Response: `{ success, message, data: { sessionId, lane_departure_count, duration_sec, lane_departure_timestamps } }`
  */
 export async function analyzeExternalVideo(accessToken, file) {
-  return postVideoAnalyze(accessToken, authConfig.endpoints.driveAiAnalyze, file, 'road.mp4');
+  return postVideoAnalyze(
+    accessToken,
+    authConfig.endpoints.driveAiAnalyze,
+    file,
+    'road.mp4',
+    'driveai',
+  );
 }
 
 /**
