@@ -78,12 +78,16 @@ export function AuthProvider({ children }) {
   };
 
   const signOut = async () => {
+    const accessToken = session?.accessToken;
+    // 로컬 세션을 먼저 제거해야 AuthGate가 /login → /(tabs) 로 되돌리지 않음
+    await persistSession(null);
+    if (!accessToken) {
+      return;
+    }
     try {
-      if (session?.accessToken) {
-        await logoutApi(session.accessToken);
-      }
-    } finally {
-      await persistSession(null);
+      await logoutApi(accessToken);
+    } catch {
+      /* 서버 로그아웃 실패해도 로컬은 이미 로그아웃 상태 */
     }
   };
 

@@ -1,4 +1,9 @@
-import { analyzeDriverVideo, getMyProfile, getUserStats } from '@/src/auth/api';
+import {
+  analyzeDriverVideo,
+  analyzeExternalVideo,
+  getMyProfile,
+  getUserStats,
+} from '@/src/auth/api';
 import { useAuth } from '@/src/auth/context';
 import { colors } from '@/src/constants/colors';
 import * as DocumentPicker from 'expo-document-picker';
@@ -108,21 +113,46 @@ export default function HomeScreen() {
       Alert.alert('로그인 필요', '로그인 후 이용해주세요.');
       return;
     }
-    if (!driverVideo) {
-      Alert.alert('안내', '내부 카메라 영상을 선택해주세요.');
+    if (!roadVideo && !driverVideo) {
+      Alert.alert('안내', '외부 또는 내부 카메라 영상을 선택해주세요.');
       return;
     }
 
     setIsUploading(true);
     setUploadPct(10);
-    setUploadLabel('영상 업로드 중...');
+    setUploadLabel('AI 분석 준비 중...');
+    console.warn('[Driview:home] 분석 시작', {
+      road: roadVideo ? { name: roadVideo.name, mimeType: roadVideo.mimeType } : null,
+      driver: driverVideo ? { name: driverVideo.name, mimeType: driverVideo.mimeType } : null,
+    });
     try {
-      // 외부 카메라(roadVideo) API — 엔드포인트 완성 후 여기에 추가
-      // await analyzeRoadVideo(session.accessToken, roadVideo);
+      let reportSessionId: string | number | undefined;
+      let reportFileName = roadVideo?.name ?? driverVideo?.name ?? '';
 
-      setUploadPct(40);
-      setUploadLabel('내부 카메라 분석 중...');
-      const result = await analyzeDriverVideo(session.accessToken, driverVideo);
+      if (roadVideo) {
+        setUploadPct(30);
+        setUploadLabel('외부 카메라 분석 중...');
+        console.warn('[Driview:home] 외부(driveai) API 호출');
+        const roadResult = await analyzeExternalVideo(session.accessToken, roadVideo);
+        console.warn('[Driview:home] 외부(driveai) 성공', { sessionId: roadResult.sessionId });
+        reportSessionId = roadResult.sessionId;
+        reportFileName = roadVideo.name;
+      }
+
+      if (driverVideo) {
+        setUploadPct(roadVideo ? 60 : 40);
+        setUploadLabel('내부 카메라 분석 중...');
+        console.warn('[Driview:home] 내부(faceai) API 호출');
+        const driverResult = await analyzeDriverVideo(session.accessToken, driverVideo);
+        console.warn('[Driview:home] 내부(faceai) 성공', { sessionId: driverResult.sessionId });
+        reportSessionId = driverResult.sessionId;
+        reportFileName = driverVideo.name;
+      }
+
+      if (reportSessionId == null) {
+        throw new Error('분석 응답에 sessionId가 없습니다.');
+      }
+
       setUploadPct(90);
       setUploadLabel('분석 완료!');
       setUploadPct(100);
@@ -133,7 +163,10 @@ export default function HomeScreen() {
           setUploadLabel('AI 분석 중...');
           router.push({
             pathname: '/(tabs)/report',
-            params: { sessionId: String(result.sessionId), fileName: driverVideo.name },
+            params: {
+              sessionId: String(reportSessionId),
+              fileName: reportFileName,
+            },
           });
         } catch {
           setIsUploading(false);
@@ -142,10 +175,12 @@ export default function HomeScreen() {
         }
       }, 500);
     } catch (e) {
+      const msg = e instanceof Error ? e.message : '다시 시도해주세요.';
+      console.warn('[Driview:home] 분석 실패', { message: msg, error: e });
       setIsUploading(false);
       setUploadPct(0);
       setUploadLabel('AI 분석 중...');
-      Alert.alert('분석 실패', e instanceof Error ? e.message : '다시 시도해주세요.');
+      Alert.alert('분석 실패', msg);
     }
   };
 
