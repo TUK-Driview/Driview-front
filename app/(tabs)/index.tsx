@@ -85,18 +85,22 @@ export default function HomeScreen() {
         const videoExt = /\.(mp4|mov|m4v|3gp|webm|mkv|avi)$/i.test(lower);
         const videoMime = asset.mimeType?.startsWith('video/') ?? false;
         if (!videoExt && !videoMime) {
-          Alert.alert('동영상만 선택', 'mp4, mov 등 영상 파일을 골라주세요.');
+          Alert.alert('동영상만 선택', 'mp4, mov, avi, mkv 등 영상 파일을 골라주세요.');
           return;
         }
         const mimeFromExt = lower.endsWith('.mov')
           ? 'video/quicktime'
           : lower.endsWith('.mp4') || lower.endsWith('.m4v')
             ? 'video/mp4'
-            : lower.endsWith('.3gp')
-              ? 'video/3gpp'
-              : lower.endsWith('.webm')
-                ? 'video/webm'
-                : null;
+            : lower.endsWith('.avi')
+              ? 'video/x-msvideo'
+              : lower.endsWith('.mkv')
+                ? 'video/x-matroska'
+                : lower.endsWith('.3gp')
+                  ? 'video/3gpp'
+                  : lower.endsWith('.webm')
+                    ? 'video/webm'
+                    : null;
         setter({
           uri: asset.uri,
           name: /\.[a-zA-Z0-9]+$/.test(rawName) ? rawName : `${rawName}.mp4`,
