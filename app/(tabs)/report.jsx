@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { useEffect, useMemo, useState, memo, useCallback, useRef } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
+import { Video, ResizeMode } from 'expo-av';
+import * as DocumentPicker from 'expo-document-picker';
 import { colors } from '@/src/constants/colors';
 import { useAuth } from '@/src/auth/context';
 import { getDrivingSessions, getDrivingReport } from '@/src/auth/api';
+import { getSessionVideo } from '@/src/constants/videoStorage';
 
 function ScoreRing({ score, color }) {
   const size = 120;
@@ -72,11 +75,79 @@ function formatVideoTime(totalSeconds) {
   return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
+function formatDuration(totalSeconds) {
+  if (!totalSeconds || totalSeconds <= 0) return null;
+  const rounded = Math.round(totalSeconds);
+  const m = Math.floor(rounded / 60);
+  const s = rounded % 60;
+  return s > 0 ? `${m}분 ${s}초` : `${m}분`;
+}
+
+const VideoPlayer = memo(({ videoRef, videoUri, onPlaybackStatusUpdate, onPickVideo }) => {
+  if (!videoUri) {
+    return (
+      <View style={styles.videoStageCenter}>
+        <Ionicons name="videocam-off-outline" size={32} color="rgba(255,255,255,0.25)" />
+        <Text style={styles.videoMockLabel}>영상 없음</Text>
+        <TouchableOpacity style={styles.videoPickBtn} onPress={onPickVideo} activeOpacity={0.8}>
+          <Ionicons name="folder-open-outline" size={14} color={colors.blue200} />
+          <Text style={styles.videoPickBtnText}>영상 불러오기</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+  return (
+    <Video
+      ref={videoRef}
+      source={{ uri: videoUri }}
+      style={styles.videoPlayer}
+      resizeMode={ResizeMode.CONTAIN}
+      shouldPlay={false}
+      useNativeControls={false}
+      onPlaybackStatusUpdate={onPlaybackStatusUpdate}
+    />
+  );
+});
+
 export default function ReportScreen() {
   const router = useRouter();
   const { session } = useAuth();
-  const { sessionId: paramSessionId, fileName: paramFileName } = useLocalSearchParams();
+  const { sessionId: paramSessionId, _reset: paramReset } = useLocalSearchParams();
+  const [localVideoUri, setLocalVideoUri] = useState(null);
+
+  const videoRef = useRef(null);
+  const [playerDuration, setPlayerDuration] = useState(0);
+  const statusCallbackRef = useRef(null);
+
+  const onPlaybackStatusUpdate = useCallback((status) => {
+    statusCallbackRef.current?.(status);
+  }, []);
+
+  statusCallbackRef.current = (status) => {
+    if (!status.isLoaded) return;
+    setIsPlaying(status.isPlaying ?? false);
+    setVideoSec(Math.round((status.positionMillis ?? 0) / 1000));
+    if (status.durationMillis) {
+      const dur = Math.round(status.durationMillis / 1000);
+      if (dur !== playerDuration) setPlayerDuration(dur);
+    }
+  };
+
+  const pickVideo = useCallback(() => {
+    void (async () => {
+      const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (!asset?.uri) return;
+      const lower = (asset.name ?? '').toLowerCase();
+      const isVideo = /\.(mp4|mov|m4v|3gp|webm|mkv|avi)$/i.test(lower) || asset.mimeType?.startsWith('video/');
+      if (!isVideo) return;
+      setLocalVideoUri(asset.uri);
+    })();
+  }, []);
+
   const [selected, setSelected] = useState(null);
+  const [showScoreInfo, setShowScoreInfo] = useState(false);
   const [videoSec, setVideoSec] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [reportDetail, setReportDetail] = useState(null);
@@ -99,29 +170,25 @@ export default function ReportScreen() {
 
   useEffect(() => {
     if (!paramSessionId) return;
-    const id = Number(paramSessionId);
-    const found = sessions.find((s) => s.sessionId === id);
-    if (found) {
-      const { date, time } = formatStartedAt(found.startedAt);
-      setSelected({
-        sessionId: found.sessionId,
-        date,
-        time,
-        score: found.score,
-        color: scoreColor(found.score),
-        meta: `${found.durationMin ?? 0}분`,
-      });
-      return;
-    }
-    let date = '—';
-    let time = '—';
-    const match = String(paramFileName ?? '').match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
-    if (match) {
-      date = `${match[1]}.${match[2]}.${match[3]}`;
-      time = `${match[4]}:${match[5]}`;
-    }
-    setSelected({ sessionId: id, date, time, score: 0, color: colors.blue400, meta: '—' });
-  }, [paramSessionId, paramFileName, sessions]);
+    setSelected({ sessionId: Number(paramSessionId), date: '—', time: '—', score: 0, color: colors.blue400, meta: '—' });
+  }, [paramSessionId]);
+
+  useEffect(() => {
+    if (!paramReset) return;
+    setSelected(null);
+    setLocalVideoUri(null);
+  }, [paramReset]);
+
+  useEffect(() => {
+    if (!selected || selected.date !== '—' || sessions.length === 0) return;
+    const match = sessions.find((s) => s.sessionId === selected.sessionId);
+    if (!match) return;
+    const { date, time } = formatStartedAt(match.startedAt);
+    const scoreNum = match.score != null ? Math.round(match.score) : null;
+    const color = scoreNum != null ? scoreColor(scoreNum) : colors.blue400;
+    const durationLabel = match.durationSec > 0 ? `${Math.floor(match.durationSec / 60)}분 ${match.durationSec % 60}초` : '—';
+    setSelected((prev) => ({ ...prev, date, time, score: scoreNum ?? 0, color, meta: durationLabel }));
+  }, [sessions, selected?.sessionId]);
 
   const prevMonth = () => {
     if (month === 1) { setYear((y) => y - 1); setMonth(12); }
@@ -136,7 +203,15 @@ export default function ReportScreen() {
     if (!selected) return;
     setVideoSec(0);
     setIsPlaying(false);
+    setPlayerDuration(0);
     setReportDetail(null);
+    videoRef.current?.pauseAsync().catch(() => {});
+    videoRef.current?.setPositionAsync(0).catch(() => {});
+
+    getSessionVideo(selected.sessionId).then((uri) => {
+      if (uri && uri !== localVideoUri) setLocalVideoUri(uri);
+    }).catch(() => {});
+
     if (!session?.accessToken) return;
     setLoadingDetail(true);
     getDrivingReport(session.accessToken, selected.sessionId)
@@ -245,10 +320,17 @@ export default function ReportScreen() {
     return items;
   }, [reportDetail, isPerfectScore]);
 
-  const videoDurationSec = reportDetail?.duration_sec ?? 0;
+
+  const videoDurationSec = playerDuration > 0
+    ? playerDuration
+    : Math.round(reportDetail?.duration_sec ?? 0);
   const colorVal = scoreColor(Math.min(100, Math.round(scoreVal)));
 
-  const seekTo = (sec) => setVideoSec(Math.max(0, Math.min(sec, videoDurationSec)));
+  const seekTo = (sec) => {
+    const clamped = Math.max(0, Math.min(sec, videoDurationSec));
+    setVideoSec(clamped);
+    videoRef.current?.setPositionAsync(clamped * 1000).catch(() => {});
+  };
   const videoProgress = videoDurationSec > 0 ? videoSec / videoDurationSec : 0;
 
   return (
@@ -289,17 +371,18 @@ export default function ReportScreen() {
             ) : (
               sessions.map((s) => {
                 const { date, time } = formatStartedAt(s.startedAt);
-                const color = scoreColor(s.score);
-                const item = { sessionId: s.sessionId, date, time, score: s.score, color, meta: `${s.durationMin ?? 0}분` };
+                const scoreNum = s.score != null ? Math.round(s.score) : null;
+                const color = scoreColor(scoreNum ?? 0);
+                const durationLabel = s.durationSec > 0 ? `${Math.floor(s.durationSec / 60)}분 ${s.durationSec % 60}초` : '—';
+                const item = { sessionId: s.sessionId, date, time, score: scoreNum ?? 0, color, meta: durationLabel };
                 return (
                   <TouchableOpacity key={s.sessionId} style={styles.driveCard} onPress={() => setSelected(item)} activeOpacity={0.85}>
-                    <View style={[styles.driveIcon, { backgroundColor: 'rgba(55,138,221,0.12)' }]} />
                     <View style={styles.driveInfo}>
                       <Text style={styles.driveDate}>{date} · {time}</Text>
                       <Text style={styles.driveTitle}>운행 기록</Text>
-                      <Text style={styles.driveMeta}>{s.durationMin ?? 0}분</Text>
+                      <Text style={styles.driveMeta}>{durationLabel}</Text>
                     </View>
-                    <Text style={[styles.driveScore, { color }]}>{s.score}</Text>
+                    <Text style={[styles.driveScore, { color }]}>{scoreNum ?? '—'}</Text>
                   </TouchableOpacity>
                 );
               })
@@ -322,10 +405,15 @@ export default function ReportScreen() {
             <Text style={[styles.pageTitle, styles.pageTitleFlex]} numberOfLines={1}>
               {selected.date} 리포트
             </Text>
+            {scoreBreakdown && (
+              <TouchableOpacity style={styles.scoreInfoBtn} onPress={() => setShowScoreInfo(true)} activeOpacity={0.75}>
+                <Text style={styles.scoreInfoBtnText}>?</Text>
+              </TouchableOpacity>
+            )}
           </View>
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView showsVerticalScrollIndicator={false} removeClippedSubviews={false}>
             <LinearGradient colors={['#0d2a4a', '#0d3a2e']} style={styles.heroCard}>
-              <Text style={styles.heroDate}>{selected.date} · {selected.time} · {selected.meta}</Text>
+              <Text style={styles.heroDate}>{selected.date} · {selected.time} · {formatDuration(reportDetail?.duration_sec) ?? selected.meta}</Text>
               <ScoreRing score={Math.min(100, Math.round(scoreVal))} color={colorVal} />
               <Text style={styles.heroGrade}>{gradeText}</Text>
             </LinearGradient>
@@ -346,28 +434,47 @@ export default function ReportScreen() {
             )}
 
             {scoreBreakdown && !loadingDetail && (
-              <View style={styles.scoreBreakdownBox}>
-                <Text style={styles.scoreBreakdownHead}>점수 산정</Text>
-                <Text style={styles.scoreBreakdownRule}>
-                  종합 점수 = 차선 준수 · 주의 집중 · 속도 준수 · 급가감속 4개 항목 평균{'\n'}
-                  (항목별 100점 기준 · 졸음 1회 −10 · 10분 내 하품 3회→졸음 1회 · 차선 이탈 1회 −3)
-                </Text>
-                {scoreBreakdown.partLines.map((row) => (
-                  <View key={row.label} style={styles.scoreBreakdownRow}>
-                    <Text style={styles.scoreBreakdownLabel}>{row.label}</Text>
-                    <Text style={styles.scoreBreakdownVal}>{row.value}</Text>
-                  </View>
-                ))}
-                <View style={styles.scoreBreakdownDivider} />
-                <View style={styles.scoreBreakdownRow}>
-                  <Text style={styles.scoreBreakdownLabelBold}>4개 항목 평균</Text>
-                  <Text style={styles.scoreBreakdownVal}>{scoreBreakdown.average}점</Text>
-                </View>
-                <View style={styles.scoreBreakdownRow}>
-                  <Text style={styles.scoreBreakdownLabelBold}>종합 점수 (서버)</Text>
-                  <Text style={styles.scoreBreakdownFinal}>{Math.round(scoreVal)}점</Text>
-                </View>
-              </View>
+              <>
+                <Modal visible={showScoreInfo} transparent animationType="fade" onRequestClose={() => setShowScoreInfo(false)}>
+                  <Pressable style={styles.modalBackdrop} onPress={() => setShowScoreInfo(false)}>
+                    <Pressable style={styles.modalBox} onPress={() => {}}>
+                      <Text style={styles.modalTitle}>점수 산정 방식</Text>
+                      <Text style={styles.modalRule}>
+                        종합 점수 = 차선 준수 · 주의 집중 · 속도 준수 · 급가감속{'\n'}4개 항목 점수의 평균
+                      </Text>
+                      <View style={styles.modalDivider} />
+                      <Text style={styles.modalSubTitle}>감점 기준</Text>
+                      <View style={styles.modalRow}>
+                        <Text style={styles.modalLabel}>졸음 감지</Text>
+                        <Text style={styles.modalDeduct}>1회당 −10점</Text>
+                      </View>
+                      <View style={styles.modalRow}>
+                        <Text style={styles.modalLabel}>하품 (10분 내 3회 → 졸음 1회)</Text>
+                        <Text style={styles.modalDeduct}>누적 집계</Text>
+                      </View>
+                      <View style={styles.modalRow}>
+                        <Text style={styles.modalLabel}>차선 이탈</Text>
+                        <Text style={styles.modalDeduct}>1회당 −3점</Text>
+                      </View>
+                      <View style={styles.modalDivider} />
+                      <Text style={styles.modalSubTitle}>이번 운행</Text>
+                      {scoreBreakdown.partLines.map((row) => (
+                        <View key={row.label} style={styles.modalRow}>
+                          <Text style={styles.modalLabel}>{row.label}</Text>
+                          <Text style={styles.modalVal}>{row.value}</Text>
+                        </View>
+                      ))}
+                      <View style={styles.modalRow}>
+                        <Text style={styles.modalLabelBold}>종합 점수</Text>
+                        <Text style={styles.modalFinal}>{Math.round(scoreVal)}점</Text>
+                      </View>
+                      <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowScoreInfo(false)}>
+                        <Text style={styles.modalCloseBtnText}>닫기</Text>
+                      </TouchableOpacity>
+                    </Pressable>
+                  </Pressable>
+                </Modal>
+              </>
             )}
 
             {loadingDetail ? (
@@ -393,30 +500,29 @@ export default function ReportScreen() {
             <View style={styles.videoCard}>
               <Text style={styles.videoTitle}>영상 확인하기</Text>
 
-              <View style={styles.videoStage}>
-                <View style={styles.videoStageCenter}>
-                  <TouchableOpacity
-                    style={styles.videoPlayBtn}
-                    onPress={() => setIsPlaying((p) => !p)}
-                    activeOpacity={0.85}
-                    accessibilityRole="button"
-                    accessibilityLabel={isPlaying ? '일시정지' : '재생'}
-                  >
-                    <Ionicons name={isPlaying ? 'pause' : 'play'} size={28} color="#fff" style={isPlaying ? {} : { marginLeft: 3 }} />
-                  </TouchableOpacity>
-                  <Text style={styles.videoMockLabel}>전면 카메라 영상</Text>
-                </View>
+              {/* 영상 영역 */}
+              <View style={styles.videoStage} collapsable={false}>
+                <VideoPlayer videoRef={videoRef} videoUri={localVideoUri} onPlaybackStatusUpdate={onPlaybackStatusUpdate} onPickVideo={pickVideo} />
+              </View>
 
-                <View style={styles.videoScrubRow}>
-                  <Text style={styles.videoTimeLeft}>{formatVideoTime(videoSec)}</Text>
-                  <View style={styles.videoTrackWrap}>
-                    <View style={styles.videoTrack}>
-                      <View style={[styles.videoTrackFill, { width: `${videoProgress * 100}%` }]} />
-                    </View>
-                    <View style={[styles.videoKnob, { left: `${videoProgress * 100}%` }]} />
+              {/* 컨트롤 바 */}
+              <View style={styles.videoScrubRow}>
+                <TouchableOpacity
+                  style={styles.videoPlayBtnSmall}
+                  onPress={() => isPlaying ? videoRef.current?.pauseAsync() : videoRef.current?.playAsync()}
+                  activeOpacity={0.85}
+                  disabled={!localVideoUri}
+                >
+                  <Ionicons name={isPlaying ? 'pause' : 'play'} size={16} color={localVideoUri ? '#fff' : 'rgba(255,255,255,0.3)'} style={isPlaying ? {} : { marginLeft: 2 }} />
+                </TouchableOpacity>
+                <Text style={styles.videoTimeLeft}>{formatVideoTime(videoSec)}</Text>
+                <View style={styles.videoTrackWrap}>
+                  <View style={styles.videoTrack}>
+                    <View style={[styles.videoTrackFill, { width: `${videoProgress * 100}%` }]} />
                   </View>
-                  <Text style={styles.videoTimeRight}>{formatVideoTime(videoDurationSec)}</Text>
+                  <View style={[styles.videoKnob, { left: `${videoProgress * 100}%` }]} />
                 </View>
+                <Text style={styles.videoTimeRight}>{formatVideoTime(videoDurationSec)}</Text>
               </View>
 
               {timelineItems.length > 0 && (
@@ -504,12 +610,51 @@ const styles = StyleSheet.create({
     marginHorizontal: 20, marginBottom: 12, borderRadius: 14, padding: 14,
     flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.bgCard, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
   },
-  driveIcon: { width: 42, height: 42, borderRadius: 12 },
+  driveIcon: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   driveInfo: { flex: 1 },
   driveDate: { fontSize: 12, color: 'rgba(255,255,255,0.35)' },
   driveTitle: { fontSize: 14, fontWeight: '500', color: '#fff', marginVertical: 2 },
   driveMeta: { fontSize: 11, color: 'rgba(255,255,255,0.35)' },
   driveScore: { fontSize: 20, fontWeight: '800' },
+
+  scoreInfoBtn: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: 'rgba(55,138,221,0.2)',
+    borderWidth: 1, borderColor: 'rgba(55,138,221,0.35)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  scoreInfoBtnText: { fontSize: 13, fontWeight: '700', color: colors.blue200 },
+
+  modalBackdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  modalBox: {
+    width: '100%',
+    backgroundColor: '#1a2235',
+    borderRadius: 20,
+    borderWidth: 1, borderColor: 'rgba(55,138,221,0.2)',
+    padding: 22,
+  },
+  modalTitle: { fontSize: 16, fontWeight: '800', color: '#fff', marginBottom: 10 },
+  modalRule: { fontSize: 12, color: 'rgba(255,255,255,0.55)', lineHeight: 18, marginBottom: 14 },
+  modalSubTitle: { fontSize: 11, fontWeight: '700', color: colors.blue200, marginBottom: 8, letterSpacing: 0.5 },
+  modalDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.07)', marginVertical: 12 },
+  modalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 },
+  modalLabel: { fontSize: 12, color: 'rgba(255,255,255,0.55)', flex: 1 },
+  modalLabelBold: { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.85)', flex: 1 },
+  modalDeduct: { fontSize: 12, color: colors.red400, fontWeight: '600' },
+  modalVal: { fontSize: 12, color: 'rgba(255,255,255,0.45)' },
+  modalFinal: { fontSize: 15, fontWeight: '800', color: colors.teal500 },
+  modalCloseBtn: {
+    marginTop: 18,
+    backgroundColor: 'rgba(55,138,221,0.15)',
+    borderWidth: 1, borderColor: 'rgba(55,138,221,0.3)',
+    borderRadius: 12, paddingVertical: 11,
+    alignItems: 'center',
+  },
+  modalCloseBtnText: { fontSize: 13, fontWeight: '700', color: colors.blue200 },
 
   heroCard: {
     margin: 20, marginTop: 20,
@@ -541,39 +686,6 @@ const styles = StyleSheet.create({
     borderRadius: 2, marginTop: 10, overflow: 'hidden',
   },
   metricBarFill: { height: '100%', borderRadius: 2 },
-
-  scoreBreakdownBox: {
-    marginHorizontal: 20,
-    marginBottom: 14,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 14,
-    padding: 14,
-  },
-  scoreBreakdownHead: { fontSize: 12, fontWeight: '700', color: colors.blue200, marginBottom: 6 },
-  scoreBreakdownRule: {
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.35)',
-    lineHeight: 15,
-    marginBottom: 12,
-  },
-  scoreBreakdownRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  scoreBreakdownLabel: { fontSize: 12, color: 'rgba(255,255,255,0.55)' },
-  scoreBreakdownLabelBold: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.75)' },
-  scoreBreakdownVal: { fontSize: 12, color: 'rgba(255,255,255,0.45)' },
-  scoreBreakdownValMinus: { color: colors.red400, fontWeight: '600' },
-  scoreBreakdownDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    marginVertical: 8,
-  },
-  scoreBreakdownFinal: { fontSize: 14, fontWeight: '800', color: colors.teal500 },
 
   celebrateCard: {
     marginHorizontal: 20,
@@ -633,32 +745,55 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: '#000',
     overflow: 'hidden',
-    minHeight: 200,
+    aspectRatio: 16 / 9,
   },
-  videoStageCenter: {
-    flexGrow: 1,
-    minHeight: 148,
+  videoPlayer: {
+    width: '100%',
+    height: '100%',
+  },
+  videoOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 20,
   },
   videoPlayBtn: {
     width: 56,
     height: 56,
     borderRadius: 28,
+    backgroundColor: 'rgba(55,138,221,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoPlayBtnSmall: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: colors.blue400,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
   },
-  videoMockLabel: { fontSize: 12, color: 'rgba(255,255,255,0.42)' },
+  videoStageCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  videoMockLabel: { fontSize: 12, color: 'rgba(255,255,255,0.42)', marginBottom: 10 },
+  videoPickBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(55,138,221,0.15)',
+    borderWidth: 1, borderColor: 'rgba(55,138,221,0.3)',
+    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8,
+  },
+  videoPickBtnText: { fontSize: 12, color: colors.blue200, fontWeight: '600' },
   videoScrubRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingBottom: 12,
-    paddingTop: 4,
-    gap: 10,
+    paddingTop: 10,
+    paddingBottom: 4,
+    gap: 8,
   },
   videoTimeLeft: { fontSize: 11, fontWeight: '600', color: '#fff', width: 36 },
   videoTimeRight: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.45)', width: 36, textAlign: 'right' },
