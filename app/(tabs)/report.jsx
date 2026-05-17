@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle } from 'react-native-svg';
-import { colors } from '@/src/constants/colors';
+import {
+  getDrivingReport,
+  getDrivingSessions,
+  takeDrivingReportPreview,
+} from '@/src/auth/api';
 import { useAuth } from '@/src/auth/context';
-import { getDrivingSessions, getDrivingReport } from '@/src/auth/api';
+import { colors } from '@/src/constants/colors';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Circle } from 'react-native-svg';
 
 function ScoreRing({ score, color }) {
   const size = 120;
@@ -123,14 +127,19 @@ export default function ReportScreen() {
     if (!selected) return;
     setVideoSec(0);
     setIsPlaying(false);
-    setReportDetail(null);
+    const preview = takeDrivingReportPreview(selected.sessionId);
+    setReportDetail(preview);
     if (!session?.accessToken) return;
-    setLoadingDetail(true);
+    setLoadingDetail(!preview);
     getDrivingReport(session.accessToken, selected.sessionId)
-      .then((data) => setReportDetail(data))
+      .then((data) => {
+        if (data) {
+          setReportDetail((prev) => ({ ...prev, ...data }));
+        }
+      })
       .catch(() => {})
       .finally(() => setLoadingDetail(false));
-  }, [selected?.sessionId]);
+  }, [selected?.sessionId, session?.accessToken]);
 
   const gradeText = useMemo(() => {
     if (!selected) return '';

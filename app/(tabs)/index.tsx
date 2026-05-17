@@ -1,4 +1,10 @@
-import { analyzeDriverVideo, analyzeExternalVideo, getMyProfile, getUserStats } from '@/src/auth/api';
+import {
+  analyzeDriverVideo,
+  analyzeExternalVideo,
+  getMyProfile,
+  getUserStats,
+  stashDrivingReportPreview,
+} from '@/src/auth/api';
 import { useAuth } from '@/src/auth/context';
 import { colors } from '@/src/constants/colors';
 import * as DocumentPicker from 'expo-document-picker';
@@ -6,12 +12,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -119,29 +125,36 @@ export default function HomeScreen() {
 
     setIsUploading(true);
     setUploadPct(10);
-    setUploadLabel('영상 업로드 중...');
+    setUploadLabel('AI 분석 준비 중...');
     try {
       let reportSessionId: string | number | undefined;
-      let reportFileName = '';
+      let reportFileName = roadVideo?.name ?? driverVideo?.name ?? '';
+      let lastAnalysis: Record<string, unknown> | null = null;
 
       if (roadVideo) {
-        setUploadPct(25);
+        setUploadPct(30);
         setUploadLabel('외부 카메라 분석 중...');
         const roadResult = await analyzeExternalVideo(session.accessToken, roadVideo);
         reportSessionId = roadResult.sessionId;
         reportFileName = roadVideo.name;
+        lastAnalysis = roadResult as Record<string, unknown>;
       }
 
       if (driverVideo) {
-        setUploadPct(roadVideo ? 55 : 40);
+        setUploadPct(roadVideo ? 60 : 40);
         setUploadLabel('내부 카메라 분석 중...');
         const driverResult = await analyzeDriverVideo(session.accessToken, driverVideo);
         reportSessionId = driverResult.sessionId;
         reportFileName = driverVideo.name;
+        lastAnalysis = driverResult as Record<string, unknown>;
       }
 
       if (reportSessionId == null) {
         throw new Error('분석 응답에 sessionId가 없습니다.');
+      }
+
+      if (lastAnalysis) {
+        stashDrivingReportPreview(reportSessionId, lastAnalysis);
       }
 
       setUploadPct(90);

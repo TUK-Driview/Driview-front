@@ -48,4 +48,19 @@ export function getPostCommentsPath(postId) {
   return `/api/v1/posts/${encodeURIComponent(String(postId))}/comments`;
 }
 
+/** POST 분석 트리거 — S3 key 전달 */
+export function getDrivingAnalyzePath(sessionId) {
+  return `${authConfig.endpoints.drivingReport}/${encodeURIComponent(String(sessionId))}/analyze`;
+}
+
+/** S3 object key (예: driving/{sessionId}/fr) */
+export function getDrivingVideoObjectKey(sessionId, slot) {
+  return `driving/${String(sessionId)}/${slot}`;
+}
+
+/** multipart 영상 업로드 — slot: `fr`(외부) | `d`(내부) */
+export function getDrivingVideoUploadPath(sessionId, slot) {
+  return `${authConfig.endpoints.drivingReport}/${encodeURIComponent(String(sessionId))}/${slot}`;
+}
+
 export const SESSION_STORAGE_KEY = 'driview.session.v1';

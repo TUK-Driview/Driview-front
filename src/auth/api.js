@@ -1,5 +1,7 @@
 import {
   authConfig,
+  getDrivingAnalyzePath,
+  getDrivingVideoUploadPath,
   getPostCommentsPath,
   getPostDetailPath,
   getPostLikeTogglePath,
@@ -37,7 +39,7 @@ async function requestApi(path, { method = 'GET', body, query, token } = {}) {
 
   const json = await res.json().catch(() => ({}));
 
-  if (json && json.isSuccess === false) {
+  if (json && (json.isSuccess === false || json.success === false)) {
     throw new Error(json.message || '요청에 실패했습니다.');
   }
   if (!res.ok) {
@@ -303,13 +305,144 @@ export async function getMe(accessToken) {
   return requestApi(authConfig.endpoints.me, { token: accessToken });
 }
 
+/** analyze·report data 정규화 */
+export function normalizeDrivingReportData(raw) {
+  if (raw == null || typeof raw !== 'object') {
+    return null;
+  }
+  const events = (Array.isArray(raw.drowsinessEvents) ? raw.drowsinessEvents : []).map((ev) => ({
+    timestampSec: Number(ev?.timestamp ?? ev?.timestampSec ?? 0),
+    type: ev?.type ?? '',
+  }));
+  const drowsinessCount = events.filter((ev) =>
+    String(ev.type).toUpperCase().includes('DROWSY'),
+  ).length;
+  return {
+    ...raw,
+    sessionId: raw.sessionId ?? raw.id,
+    yawn_count: Number(raw.yawn_count ?? raw.yawnCount ?? 0),
+    duration_sec: Number(raw.duration_sec ?? raw.durationSec ?? 0),
+    drowsinessEvents: events,
+    drowsinessCount: Number(raw.drowsinessCount ?? raw.drowsiness_count ?? drowsinessCount),
+  };
+}
+
+let drivingReportPreview = null;
+
+export function stashDrivingReportPreview(sessionId, data) {
+  const normalized = normalizeDrivingReportData(
+    data != null && typeof data === 'object' ? data : { sessionId },
+  );
+  if (!normalized) {
+    return;
+  }
+  drivingReportPreview = { sessionId: String(sessionId), data: normalized };
+}
+
+export function takeDrivingReportPreview(sessionId) {
+  if (!drivingReportPreview || drivingReportPreview.sessionId !== String(sessionId)) {
+    return null;
+  }
+  const { data } = drivingReportPreview;
+  drivingReportPreview = null;
+  return data;
+}
+
 /** GET 운행 리포트 상세 — path: /api/driving/{sessionId}/report */
 export async function getDrivingReport(accessToken, sessionId) {
   const json = await requestApi(
     `${authConfig.endpoints.drivingReport}/${encodeURIComponent(String(sessionId))}/report`,
     { token: accessToken },
   );
-  return json?.data ?? null;
+  return normalizeDrivingReportData(json?.data ?? null);
+}
+
+/**
+ * POST `/api/driving/session` — 운행 세션 생성
+ * @returns {{ sessionId: string|number }}
+ */
+export async function createDrivingSession(accessToken) {
+  const json = await requestApi(authConfig.endpoints.drivingSessions, {
+    method: 'POST',
+    token: accessToken,
+  });
+  const d = json?.data ?? json;
+  const sessionId =
+    (d != null && typeof d === 'object' && (d.sessionId ?? d.id)) ?? json?.sessionId ?? json?.id;
+  if (sessionId == null || sessionId === '') {
+    throw new Error(json?.message || '세션을 생성하지 못했습니다.');
+  }
+  return { sessionId };
+}
+
+/**
+ * POST `/api/driving/{sessionId}/{fr|d}` — 영상 파일 업로드
+ * @param {'fr'|'d'} slot fr=외부, d=내부
+ */
+export async function uploadDrivingSessionVideo(accessToken, sessionId, slot, file) {
+  const base = authConfig.apiBaseUrl?.replace(/\/$/, '');
+  if (!base) {
+    throw new Error('EXPO_PUBLIC_API_BASE_URL is not set.');
+  }
+  const path = getDrivingVideoUploadPath(sessionId, slot);
+  const url = `${base}${path}`;
+  const fileName = file.name || (slot === 'fr' ? 'front.mp4' : 'driver.mp4');
+  const mimeType = file.mimeType || 'video/mp4';
+  const formData = new FormData();
+  formData.append('file', {
+    uri: file.uri,
+    name: fileName,
+    type: mimeType,
+  });
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: formData,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (json?.isSuccess === false || json?.success === false) {
+    throw new Error(json?.message || '영상 업로드에 실패했습니다.');
+  }
+  if (!res.ok) {
+    throw new Error(json?.message || '영상 업로드에 실패했습니다.');
+  }
+  return json?.data ?? json;
+}
+
+/**
+ * POST `/api/driving/{sessionId}/analyze`
+ * 성공: { success, message, data: { sessionId, yawn_count, duration_sec, drowsinessEvents[] } }
+ */
+export async function triggerDrivingAnalysis(
+  accessToken,
+  sessionId,
+  { frontVideoKey, driverVideoKey } = {},
+) {
+  const sid = String(sessionId).trim();
+  if (!sid) {
+    throw new Error('sessionId가 없습니다.');
+  }
+  const body = {
+    sessionId: sid,
+    ...(frontVideoKey ? { frontVideoKey } : {}),
+    ...(driverVideoKey ? { driverVideoKey } : {}),
+  };
+  const json = await requestApi(getDrivingAnalyzePath(sid), {
+    method: 'POST',
+    body,
+    token: accessToken,
+  });
+  if (json?.success === false || json?.isSuccess === false) {
+    throw new Error(json?.message || '분석 요청에 실패했습니다.');
+  }
+  const d = json?.data ?? json;
+  const report = normalizeDrivingReportData(d) ?? { sessionId: sid };
+  return {
+    sessionId: report.sessionId ?? sid,
+    message: json?.message,
+    ...report,
+  };
 }
 
 /** GET 운전 세션 목록 — query: year, month (required); data: { year, month, sessions[{ sessionId, startedAt, durationMin, score }] } */

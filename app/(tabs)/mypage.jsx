@@ -1,26 +1,38 @@
 import { useRouter } from 'expo-router';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/src/constants/colors';
-import { useAuth } from '@/src/auth/context';
-import { getMyProfile } from '@/src/auth/api';
-import { useEffect, useState } from 'react';
+
+const profileStats = [
+  { val: '1,240', label: '총 주행km' },
+  { val: '87', label: '평균 점수' },
+  { val: '42', label: '총 운행수' },
+];
 
 const menuGroups = [
   {
-    title: '내 활동',
+    title: '운전 기록',
     items: [
-      { icon: '📋', label: '내가 쓴 글', route: '/myposts' },
+      { icon: '📝', label: '내가 쓴 글', route: '/myposts' },
+      { icon: '📊', label: '운행 통계', route: null },
     ],
   },
   {
-    title: '설정',
+    title: '계정',
     items: [
-      { icon: '🔔', label: '알림 설정', route: '/notification-settings' },
-      { icon: '🔒', label: '개인정보 처리방침', route: '/privacy-policy' },
+      { icon: '👤', label: '프로필 편집', route: null },
+      { icon: '🔔', label: '알림 설정', route: null, badge: '3' },
+      { icon: '🔒', label: '보안 설정', route: null },
+    ],
+  },
+  {
+    title: '앱 정보',
+    items: [
+      { icon: '❓', label: '도움말', route: null },
+      { icon: 'ℹ️', label: '앱 버전 1.0.0', route: null },
       { icon: '🚪', label: '로그아웃', route: '/login', danger: true },
     ],
   },
@@ -28,27 +40,6 @@ const menuGroups = [
 
 export default function MyPageScreen() {
   const router = useRouter();
-  const { signOut, session } = useAuth();
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!session?.accessToken) { setLoading(false); return; }
-    getMyProfile(session.accessToken)
-      .then((data) => setProfile(data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [session?.accessToken]);
-
-  const nickname = profile?.nickname ?? '—';
-  const email = profile?.email ?? '—';
-  const avgScore = profile != null ? Math.round(profile.avgScore ?? 0) : '—';
-  const totalDrives = profile?.totalDriveCount ?? '—';
-  const totalKm = profile != null
-    ? (profile.totalDistanceKm >= 1000
-      ? `${(profile.totalDistanceKm / 1000).toFixed(1)}k`
-      : String(Math.round(profile.totalDistanceKm ?? 0)))
-    : '—';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -58,22 +49,16 @@ export default function MyPageScreen() {
           <View style={styles.avatarBig}>
             <Text style={{ fontSize: 36 }}>🧑</Text>
           </View>
-          {loading
-            ? <ActivityIndicator color={colors.blue400} style={{ marginBottom: 8 }} />
-            : <Text style={styles.profileName}>{nickname}</Text>}
-          <Text style={styles.profileEmail}>{email}</Text>
-          <TouchableOpacity style={styles.editBtn} onPress={() => router.push('/edit-profile')}>
+          <Text style={styles.profileName}>현수</Text>
+          <Text style={styles.profileEmail}>hyunsoo@example.com</Text>
+          <TouchableOpacity style={styles.editBtn}>
             <Text style={styles.editBtnText}>프로필 편집</Text>
           </TouchableOpacity>
         </View>
 
         {/* 통계 */}
         <View style={styles.statsRow}>
-          {[
-            { val: avgScore, label: '평균 점수' },
-            { val: totalDrives, label: '총 운행' },
-            { val: totalKm, label: '총 주행km' },
-          ].map((s) => (
+          {profileStats.map((s) => (
             <View key={s.label} style={styles.statCard}>
               <Text style={styles.statVal}>{s.val}</Text>
               <Text style={styles.statLabel}>{s.label}</Text>
@@ -89,14 +74,7 @@ export default function MyPageScreen() {
               <TouchableOpacity
                 key={item.label}
                 style={styles.menuItem}
-                onPress={async () => {
-                  if (item.label === '로그아웃') {
-                    await signOut();
-                    router.replace('/login');
-                    return;
-                  }
-                  if (item.route) router.push(item.route);
-                }}
+                onPress={() => item.route && router.push(item.route)}
                 activeOpacity={0.7}
               >
                 <View style={styles.menuIcon}>

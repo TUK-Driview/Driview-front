@@ -13,8 +13,7 @@ function AuthGate() {
     if (isBootstrapping) return;
     const root = segments[0];
     const isAuthScreen = root === 'login' || root === 'signup' || root === 'onboarding';
-    const isProtectedScreen =
-      root === '(tabs)' || root === 'write' || root === 'myposts' || root === 'community';
+    const isProtectedScreen = root === '(tabs)' || root === 'write' || root === 'myposts';
 
     if (!isAuthenticated && isProtectedScreen) {
       router.replace('/login');
@@ -41,7 +40,6 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="write" />
           <Stack.Screen name="myposts" />
-          <Stack.Screen name="community" />
         </Stack>
         <StatusBar style="light" />
       </AuthProvider>
