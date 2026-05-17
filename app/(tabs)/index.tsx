@@ -1,4 +1,4 @@
-import { analyzeDriverVideo, getMyProfile, getUserStats } from '@/src/auth/api';
+import { analyzeDriverVideo, analyzeExternalVideo, getMyProfile, getUserStats } from '@/src/auth/api';
 import { useAuth } from '@/src/auth/context';
 import { colors } from '@/src/constants/colors';
 import * as DocumentPicker from 'expo-document-picker';
@@ -80,18 +80,22 @@ export default function HomeScreen() {
         const videoExt = /\.(mp4|mov|m4v|3gp|webm|mkv|avi)$/i.test(lower);
         const videoMime = asset.mimeType?.startsWith('video/') ?? false;
         if (!videoExt && !videoMime) {
-          Alert.alert('동영상만 선택', 'mp4, mov 등 영상 파일을 골라주세요.');
+          Alert.alert('동영상만 선택', 'mp4, mov, avi, mkv 등 영상 파일을 골라주세요.');
           return;
         }
         const mimeFromExt = lower.endsWith('.mov')
           ? 'video/quicktime'
           : lower.endsWith('.mp4') || lower.endsWith('.m4v')
             ? 'video/mp4'
-            : lower.endsWith('.3gp')
-              ? 'video/3gpp'
-              : lower.endsWith('.webm')
-                ? 'video/webm'
-                : null;
+            : lower.endsWith('.avi')
+              ? 'video/x-msvideo'
+              : lower.endsWith('.mkv')
+                ? 'video/x-matroska'
+                : lower.endsWith('.3gp')
+                  ? 'video/3gpp'
+                  : lower.endsWith('.webm')
+                    ? 'video/webm'
+                    : null;
         setter({
           uri: asset.uri,
           name: /\.[a-zA-Z0-9]+$/.test(rawName) ? rawName : `${rawName}.mp4`,
@@ -108,8 +112,8 @@ export default function HomeScreen() {
       Alert.alert('로그인 필요', '로그인 후 이용해주세요.');
       return;
     }
-    if (!driverVideo) {
-      Alert.alert('안내', '내부 카메라 영상을 선택해주세요.');
+    if (!roadVideo && !driverVideo) {
+      Alert.alert('안내', '외부 또는 내부 카메라 영상을 선택해주세요.');
       return;
     }
 
@@ -117,12 +121,29 @@ export default function HomeScreen() {
     setUploadPct(10);
     setUploadLabel('영상 업로드 중...');
     try {
-      // 외부 카메라(roadVideo) API — 엔드포인트 완성 후 여기에 추가
-      // await analyzeRoadVideo(session.accessToken, roadVideo);
+      let reportSessionId: string | number | undefined;
+      let reportFileName = '';
 
-      setUploadPct(40);
-      setUploadLabel('내부 카메라 분석 중...');
-      const result = await analyzeDriverVideo(session.accessToken, driverVideo);
+      if (roadVideo) {
+        setUploadPct(25);
+        setUploadLabel('외부 카메라 분석 중...');
+        const roadResult = await analyzeExternalVideo(session.accessToken, roadVideo);
+        reportSessionId = roadResult.sessionId;
+        reportFileName = roadVideo.name;
+      }
+
+      if (driverVideo) {
+        setUploadPct(roadVideo ? 55 : 40);
+        setUploadLabel('내부 카메라 분석 중...');
+        const driverResult = await analyzeDriverVideo(session.accessToken, driverVideo);
+        reportSessionId = driverResult.sessionId;
+        reportFileName = driverVideo.name;
+      }
+
+      if (reportSessionId == null) {
+        throw new Error('분석 응답에 sessionId가 없습니다.');
+      }
+
       setUploadPct(90);
       setUploadLabel('분석 완료!');
       setUploadPct(100);
@@ -133,7 +154,10 @@ export default function HomeScreen() {
           setUploadLabel('AI 분석 중...');
           router.push({
             pathname: '/(tabs)/report',
-            params: { sessionId: String(result.sessionId), fileName: driverVideo.name },
+            params: {
+              sessionId: String(reportSessionId),
+              fileName: reportFileName,
+            },
           });
         } catch {
           setIsUploading(false);
