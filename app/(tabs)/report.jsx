@@ -134,22 +134,37 @@ export default function ReportScreen() {
 
   const gradeText = useMemo(() => {
     if (!selected) return '';
+    const score = Math.round(reportDetail?.score ?? selected.score ?? 0);
+    if (score === 100) return '만점 달성!';
     if (reportDetail?.grade) return reportDetail.grade;
-    if (selected.score >= 90) return '안전 운전 우수 등급';
-    if (selected.score >= 80) return '양호 등급';
-    if (selected.score >= 70) return '주의 필요 등급';
+    if (score >= 90) return '안전 운전 우수 등급';
+    if (score >= 80) return '양호 등급';
+    if (score >= 70) return '주의 필요 등급';
     return '위험 운전 등급';
   }, [selected, reportDetail]);
+
+  const partScores = useMemo(() => {
+    if (!reportDetail) return [];
+    const brakingScore =
+      reportDetail.brakingScore ??
+      Math.max(0, 100 - (reportDetail.hardBrakingCount ?? 0) * 10);
+    return [
+      { label: '차선 준수', score: reportDetail.laneScore ?? 0 },
+      { label: '주의 집중', score: reportDetail.focusScore ?? 0 },
+      { label: '속도 준수', score: reportDetail.speedScore ?? 0 },
+      { label: '급가감속', score: brakingScore },
+    ];
+  }, [reportDetail]);
 
   const metrics = useMemo(() => {
     if (!reportDetail) return [];
     return [
-      { label: '차선 준수', val: reportDetail.laneScore ?? 0, sub: `이탈 ${reportDetail.laneViolationCount ?? 0}회 감지`, color: colors.teal500 },
-      { label: '주의 집중', val: reportDetail.focusScore ?? 0, sub: `졸음 ${reportDetail.drowsinessCount ?? 0}회 감지`, color: colors.blue400 },
-      { label: '속도 준수', val: reportDetail.speedScore ?? 0, sub: `과속 ${reportDetail.speedViolationCount ?? 0}회`, color: colors.amber400 },
-      { label: '급가감속', val: Math.max(0, 100 - (reportDetail.hardBrakingCount ?? 0) * 10), sub: `급제동 ${reportDetail.hardBrakingCount ?? 0}회`, color: colors.red400 },
+      { label: '차선 준수', val: partScores[0]?.score ?? 0, sub: `이탈 ${reportDetail.laneViolationCount ?? 0}회 감지`, color: colors.teal500 },
+      { label: '주의 집중', val: partScores[1]?.score ?? 0, sub: `졸음 ${reportDetail.drowsinessCount ?? 0}회 감지`, color: colors.blue400 },
+      { label: '속도 준수', val: partScores[2]?.score ?? 0, sub: `과속 ${reportDetail.speedViolationCount ?? 0}회`, color: colors.amber400 },
+      { label: '급가감속', val: partScores[3]?.score ?? 0, sub: `급제동 ${reportDetail.hardBrakingCount ?? 0}회`, color: colors.red400 },
     ];
-  }, [reportDetail]);
+  }, [reportDetail, partScores]);
 
   const timelineItems = useMemo(() => {
     if (!reportDetail?.drowsinessEvents?.length) return [];
@@ -175,20 +190,50 @@ export default function ReportScreen() {
     });
   }, [reportDetail]);
 
+  const scoreVal = reportDetail?.score ?? selected?.score ?? 0;
+  const isPerfectScore = Math.round(scoreVal) === 100;
+
+  /** 종합 score = 차선·집중·속도·급가감속 4항목 평균 (항목별 100점 기준, 감점 규칙은 백엔드 산정) */
+  const scoreBreakdown = useMemo(() => {
+    if (!reportDetail || partScores.length !== 4) return null;
+    const sum = partScores.reduce((acc, p) => acc + p.score, 0);
+    const average = Math.round(sum / 4);
+    return {
+      partLines: partScores.map((p) => ({ label: p.label, value: `${Math.round(p.score)}점` })),
+      average,
+    };
+  }, [reportDetail, partScores]);
+
   const adviceList = useMemo(() => {
     if (!reportDetail) return [];
+    if (isPerfectScore) {
+      return [
+        '완벽한 운전이었어요! 차선·집중·속도 모두 훌륭합니다.',
+        '이번 운행은 모범 사례로 기록할 만한 수준이에요. 다음에도 안전 운전 이어가 주세요.',
+      ];
+    }
     const items = [];
-    if ((reportDetail.laneViolationCount ?? 0) > 0) items.push(`차선 이탈이 ${reportDetail.laneViolationCount}회 감지되었습니다. 핸들 유지와 집중에 신경 써주세요.`);
-    if ((reportDetail.drowsinessCount ?? 0) > 0 || (reportDetail.yawn_count ?? 0) > 0) items.push(`졸음·하품이 감지되었습니다. 충분한 휴식 후 운전하세요.`);
+    const lane = reportDetail.laneViolationCount ?? 0;
+    const drowsy = reportDetail.drowsinessCount ?? 0;
+    const yawns = reportDetail.yawn_count ?? 0;
+    if (lane > 0) {
+      items.push(`차선 이탈 ${lane}회 (항목당 −3점). 핸들 유지와 집중에 신경 써주세요.`);
+    }
+    if (drowsy > 0 || yawns > 0) {
+      const yawnNote = yawns > 0 ? `하품 ${yawns}회` : '';
+      const drowsyNote = drowsy > 0 ? `졸음 ${drowsy}회 (항목당 −10점)` : '';
+      items.push(
+        [yawnNote, drowsyNote].filter(Boolean).join(', ') + '. 10분 내 하품 3회는 졸음 1회로 집계됩니다. 충분히 쉬고 운전하세요.',
+      );
+    }
     if ((reportDetail.hardBrakingCount ?? 0) > 0) items.push(`급제동이 ${reportDetail.hardBrakingCount}회 발생했습니다. 앞차와의 거리를 더 확보해보세요.`);
     if ((reportDetail.speedViolationCount ?? 0) > 0) items.push(`과속 구간이 ${reportDetail.speedViolationCount}회 있었습니다. 제한 속도를 준수해주세요.`);
     if (items.length === 0) items.push('전반적으로 안전한 운전 패턴입니다. 현재 수준을 유지하면 상위 등급이 가능합니다.');
     return items;
-  }, [reportDetail]);
+  }, [reportDetail, isPerfectScore]);
 
   const videoDurationSec = reportDetail?.duration_sec ?? 0;
-  const scoreVal = reportDetail?.score ?? selected?.score ?? 0;
-  const colorVal = scoreColor(scoreVal);
+  const colorVal = scoreColor(Math.min(100, Math.round(scoreVal)));
 
   const seekTo = (sec) => setVideoSec(Math.max(0, Math.min(sec, videoDurationSec)));
   const videoProgress = videoDurationSec > 0 ? videoSec / videoDurationSec : 0;
@@ -268,9 +313,49 @@ export default function ReportScreen() {
           <ScrollView showsVerticalScrollIndicator={false}>
             <LinearGradient colors={['#0d2a4a', '#0d3a2e']} style={styles.heroCard}>
               <Text style={styles.heroDate}>{selected.date} · {selected.time} · {selected.meta}</Text>
-              <ScoreRing score={scoreVal} color={colorVal} />
+              <ScoreRing score={Math.min(100, Math.round(scoreVal))} color={colorVal} />
               <Text style={styles.heroGrade}>{gradeText}</Text>
             </LinearGradient>
+
+            {isPerfectScore && !loadingDetail && (
+              <LinearGradient
+                colors={['rgba(29,158,117,0.35)', 'rgba(55,138,221,0.2)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.celebrateCard}
+              >
+                <Text style={styles.celebrateEmoji}>🎉</Text>
+                <Text style={styles.celebrateTitle}>100점 만점 축하해요!</Text>
+                <Text style={styles.celebrateSub}>
+                  이번 운행은 완벽에 가까운 안전 운전이었습니다.{'\n'}정말 잘하셨어요!
+                </Text>
+              </LinearGradient>
+            )}
+
+            {scoreBreakdown && !loadingDetail && (
+              <View style={styles.scoreBreakdownBox}>
+                <Text style={styles.scoreBreakdownHead}>점수 산정</Text>
+                <Text style={styles.scoreBreakdownRule}>
+                  종합 점수 = 차선 준수 · 주의 집중 · 속도 준수 · 급가감속 4개 항목 평균{'\n'}
+                  (항목별 100점 기준 · 졸음 1회 −10 · 10분 내 하품 3회→졸음 1회 · 차선 이탈 1회 −3)
+                </Text>
+                {scoreBreakdown.partLines.map((row) => (
+                  <View key={row.label} style={styles.scoreBreakdownRow}>
+                    <Text style={styles.scoreBreakdownLabel}>{row.label}</Text>
+                    <Text style={styles.scoreBreakdownVal}>{row.value}</Text>
+                  </View>
+                ))}
+                <View style={styles.scoreBreakdownDivider} />
+                <View style={styles.scoreBreakdownRow}>
+                  <Text style={styles.scoreBreakdownLabelBold}>4개 항목 평균</Text>
+                  <Text style={styles.scoreBreakdownVal}>{scoreBreakdown.average}점</Text>
+                </View>
+                <View style={styles.scoreBreakdownRow}>
+                  <Text style={styles.scoreBreakdownLabelBold}>종합 점수 (서버)</Text>
+                  <Text style={styles.scoreBreakdownFinal}>{Math.round(scoreVal)}점</Text>
+                </View>
+              </View>
+            )}
 
             {loadingDetail ? (
               <View style={styles.center}>
@@ -355,7 +440,7 @@ export default function ReportScreen() {
 
             {adviceList.length > 0 && (
               <View style={styles.adviceBox}>
-                <Text style={styles.adviceHead}>AI 개선 조언</Text>
+                <Text style={styles.adviceHead}>{isPerfectScore ? 'AI 축하 메시지' : 'AI 개선 조언'}</Text>
                 {adviceList.map((text, i) => (
                   <View key={String(i)} style={styles.adviceItem}>
                     <View style={styles.adviceNum}><Text style={styles.adviceNumText}>{i + 1}</Text></View>
@@ -443,6 +528,64 @@ const styles = StyleSheet.create({
     borderRadius: 2, marginTop: 10, overflow: 'hidden',
   },
   metricBarFill: { height: '100%', borderRadius: 2 },
+
+  scoreBreakdownBox: {
+    marginHorizontal: 20,
+    marginBottom: 14,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14,
+    padding: 14,
+  },
+  scoreBreakdownHead: { fontSize: 12, fontWeight: '700', color: colors.blue200, marginBottom: 6 },
+  scoreBreakdownRule: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.35)',
+    lineHeight: 15,
+    marginBottom: 12,
+  },
+  scoreBreakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  scoreBreakdownLabel: { fontSize: 12, color: 'rgba(255,255,255,0.55)' },
+  scoreBreakdownLabelBold: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.75)' },
+  scoreBreakdownVal: { fontSize: 12, color: 'rgba(255,255,255,0.45)' },
+  scoreBreakdownValMinus: { color: colors.red400, fontWeight: '600' },
+  scoreBreakdownDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginVertical: 8,
+  },
+  scoreBreakdownFinal: { fontSize: 14, fontWeight: '800', color: colors.teal500 },
+
+  celebrateCard: {
+    marginHorizontal: 20,
+    marginBottom: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(29,158,117,0.45)',
+    paddingVertical: 20,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+  },
+  celebrateEmoji: { fontSize: 36, marginBottom: 8 },
+  celebrateTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.teal500,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  celebrateSub: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.65)',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
 
   adviceBox: {
     marginHorizontal: 20, marginBottom: 14,
