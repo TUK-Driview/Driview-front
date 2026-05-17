@@ -98,17 +98,30 @@ export default function ReportScreen() {
   }, [session?.accessToken, year, month]);
 
   useEffect(() => {
-    if (paramSessionId) {
-      let date = '—';
-      let time = '—';
-      const match = String(paramFileName ?? '').match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
-      if (match) {
-        date = `${match[1]}.${match[2]}.${match[3]}`;
-        time = `${match[4]}:${match[5]}`;
-      }
-      setSelected({ sessionId: Number(paramSessionId), date, time, score: 0, color: colors.blue400, meta: '—' });
+    if (!paramSessionId) return;
+    const id = Number(paramSessionId);
+    const found = sessions.find((s) => s.sessionId === id);
+    if (found) {
+      const { date, time } = formatStartedAt(found.startedAt);
+      setSelected({
+        sessionId: found.sessionId,
+        date,
+        time,
+        score: found.score,
+        color: scoreColor(found.score),
+        meta: `${found.durationMin ?? 0}분`,
+      });
+      return;
     }
-  }, [paramSessionId]);
+    let date = '—';
+    let time = '—';
+    const match = String(paramFileName ?? '').match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+    if (match) {
+      date = `${match[1]}.${match[2]}.${match[3]}`;
+      time = `${match[4]}:${match[5]}`;
+    }
+    setSelected({ sessionId: id, date, time, score: 0, color: colors.blue400, meta: '—' });
+  }, [paramSessionId, paramFileName, sessions]);
 
   const prevMonth = () => {
     if (month === 1) { setYear((y) => y - 1); setMonth(12); }

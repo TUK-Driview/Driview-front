@@ -37,8 +37,8 @@ async function requestApi(path, { method = 'GET', body, query, token } = {}) {
 
   const json = await res.json().catch(() => ({}));
 
-  if (json && json.isSuccess === false) {
-    throw new Error(json.message || '요청에 실패했습니다.');
+  if (json?.isSuccess === false || json?.success === false) {
+    throw new Error(json?.message || '요청에 실패했습니다.');
   }
   if (!res.ok) {
     throw new Error(json?.message || '요청에 실패했습니다.');
@@ -312,18 +312,32 @@ export async function getDrivingReport(accessToken, sessionId) {
   return json?.data ?? null;
 }
 
-/** GET 운전 세션 목록 — query: year, month (required); data: { year, month, sessions[{ sessionId, startedAt, durationMin, score }] } */
+/**
+ * GET `/api/driving/session` — 세션 목록 조회
+ * Query: year, month (required)
+ * Response: `{ success, data: { year, month, sessions[{ sessionId, startedAt, durationMin, score }] } }`
+ */
 export async function getDrivingSessions(accessToken, { year, month }) {
   const json = await requestApi(authConfig.endpoints.drivingSessions, {
     method: 'GET',
-    query: { year, month },
+    query: { year: Number(year), month: Number(month) },
     token: accessToken,
   });
+
   const d = json?.data;
+  const rawSessions = Array.isArray(d?.sessions) ? d.sessions : [];
+
+  const sessions = rawSessions.map((s) => ({
+    sessionId: Number(s.sessionId ?? s.id),
+    startedAt: s.startedAt ?? s.started_at ?? null,
+    durationMin: Number(s.durationMin ?? s.duration_min ?? 0),
+    score: Number(s.score ?? 0),
+  })).filter((s) => !Number.isNaN(s.sessionId));
+
   return {
-    year: d?.year ?? year,
-    month: d?.month ?? month,
-    sessions: Array.isArray(d?.sessions) ? d.sessions : [],
+    year: Number(d?.year ?? year),
+    month: Number(d?.month ?? month),
+    sessions,
   };
 }
 
