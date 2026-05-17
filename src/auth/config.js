@@ -14,8 +14,10 @@ export const authConfig = {
     myProfile: '/api/users/me',
     /** GET 통계 — Bearer accessToken, query year?, month? (프로필 me와 별개) */
     userStats: '/api/users/me/stats',
-    /** POST multipart — Bearer accessToken, field name `file` */
+    /** POST multipart — 내부 카메라 영상, field `file` */
     faceAiAnalyze: '/api/faceai/analyze',
+    /** POST multipart — 외부 카메라 영상, field `file` */
+    driveAiAnalyze: '/api/driveai/analyze',
     /** GET 알림 설정 조회 — Bearer; data: { driveReportAlert, drowsinessAlert, communityCommentAlert, communityLikeAlert, marketingAlert } */
     notificationSettings: '/api/users/me/notification-settings',
     /** GET 내가 쓴 글 목록 — Bearer; 응답 data: { totalCount, posts[] } */

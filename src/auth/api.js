@@ -398,19 +398,19 @@ export async function logout(accessToken) {
 }
 
 /**
- * 운전자 영상 업로드 · multipart/form-data (필드명 file)
- * @param {{ uri: string; name: string; mimeType?: string }} file
+ * multipart 영상 분석 공통 처리
+ * @returns {{ sessionId: number|string; lane_departure_count?: number; duration_sec?: number; lane_departure_timestamps?: number[] }}
  */
-export async function analyzeDriverVideo(accessToken, file) {
+async function postVideoAnalyze(accessToken, endpointPath, file, defaultName) {
   const base = authConfig.apiBaseUrl?.replace(/\/$/, '');
   if (!base) {
     throw new Error('EXPO_PUBLIC_API_BASE_URL is not set.');
   }
-  const url = `${base}${authConfig.endpoints.faceAiAnalyze}`;
+  const url = `${base}${endpointPath}`;
   const formData = new FormData();
   formData.append('file', {
     uri: file.uri,
-    name: file.name || 'driver.mp4',
+    name: file.name || defaultName,
     type: file.mimeType || 'video/mp4',
   });
 
@@ -423,25 +423,39 @@ export async function analyzeDriverVideo(accessToken, file) {
   });
 
   const json = await res.json().catch(() => ({}));
-  console.log('[analyzeDriverVideo] status:', res.status, 'body:', JSON.stringify(json));
 
-  if (json && json.isSuccess === false) {
-    throw new Error(json.message || '영상 분석에 실패했습니다.');
+  if (json?.isSuccess === false || json?.success === false) {
+    throw new Error(json?.message || '영상 분석에 실패했습니다.');
   }
   if (!res.ok) {
     throw new Error(json?.message || '영상 분석 요청에 실패했습니다.');
   }
 
   const payload =
-    json && typeof json.isSuccess === 'boolean' && json.data !== undefined
+    json?.data != null && typeof json.data === 'object'
       ? json.data
-      : json;
+      : json && typeof json === 'object' && json.sessionId != null
+        ? json
+        : null;
 
   if (!payload || payload.sessionId == null) {
-    throw new Error('분석 응답이 올바르지 않습니다.');
+    throw new Error(json?.message || '분석 응답이 올바르지 않습니다.');
   }
 
   return payload;
+}
+
+/** POST `/api/faceai/analyze` — 내부 카메라 (multipart `file`) */
+export async function analyzeDriverVideo(accessToken, file) {
+  return postVideoAnalyze(accessToken, authConfig.endpoints.faceAiAnalyze, file, 'driver.mp4');
+}
+
+/**
+ * POST `/api/driveai/analyze` — 외부 카메라 (multipart `file`)
+ * Response: `{ success, message, data: { sessionId, lane_departure_count, duration_sec, lane_departure_timestamps } }`
+ */
+export async function analyzeExternalVideo(accessToken, file) {
+  return postVideoAnalyze(accessToken, authConfig.endpoints.driveAiAnalyze, file, 'road.mp4');
 }
 
 /**
