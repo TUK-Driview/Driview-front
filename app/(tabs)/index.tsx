@@ -177,6 +177,8 @@ export default function HomeScreen() {
           setIsUploading(false);
           setUploadPct(0);
           setUploadLabel('AI 분석 중...');
+          setRoadVideo(null);
+          setDriverVideo(null);
           router.push({ pathname: '/(tabs)/report', params: { sessionId: String(reportSessionId) } });
         } catch {
           setIsUploading(false);
